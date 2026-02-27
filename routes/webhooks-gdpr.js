@@ -5,6 +5,46 @@
 
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
+
+/**
+ * Verify Shopify HMAC signature
+ * CRITICAL: Must use raw body, not parsed JSON
+ */
+function verifyShopifyWebhook(req) {
+  const hmac = req.get('X-Shopify-Hmac-Sha256');
+  const secret = process.env.SHOPIFY_API_SECRET || '';
+  
+  if (!hmac) {
+    console.log('⚠️  Missing HMAC header');
+    return false;
+  }
+  
+  if (!secret) {
+    console.log('⚠️  Missing SHOPIFY_API_SECRET environment variable');
+    return false;
+  }
+  
+  // Use raw body for HMAC verification (critical!)
+  const body = req.rawBody || JSON.stringify(req.body);
+  
+  const hash = crypto
+    .createHmac('sha256', secret)
+    .update(body, 'utf8')
+    .digest('base64');
+  
+  const isValid = hmac === hash;
+  
+  if (!isValid) {
+    console.log('❌ HMAC verification failed');
+    console.log('   Expected:', hash);
+    console.log('   Received:', hmac);
+  } else {
+    console.log('✅ HMAC verification passed');
+  }
+  
+  return isValid;
+}
 
 /**
  * Customer Data Request (GDPR)
@@ -12,6 +52,12 @@ const router = express.Router();
  */
 router.post('/customers/data_request', async (req, res) => {
   try {
+    // Verify HMAC signature
+    if (!verifyShopifyWebhook(req)) {
+      console.log('❌ Invalid HMAC signature');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const { shop_id, shop_domain, customer } = req.body;
 
     console.log('📋 GDPR Data Request received');
@@ -37,6 +83,12 @@ router.post('/customers/data_request', async (req, res) => {
  */
 router.post('/customers/redact', async (req, res) => {
   try {
+    // Verify HMAC signature
+    if (!verifyShopifyWebhook(req)) {
+      console.log('❌ Invalid HMAC signature');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const { shop_id, shop_domain, customer } = req.body;
 
     console.log('🗑️  GDPR Customer Redact received');
@@ -62,6 +114,12 @@ router.post('/customers/redact', async (req, res) => {
  */
 router.post('/shop/redact', async (req, res) => {
   try {
+    // Verify HMAC signature
+    if (!verifyShopifyWebhook(req)) {
+      console.log('❌ Invalid HMAC signature');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const { shop_id, shop_domain } = req.body;
 
     console.log('🗑️  GDPR Shop Redact received');

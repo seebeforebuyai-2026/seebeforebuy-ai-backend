@@ -83,24 +83,27 @@ console.log('   Allowed origins:', allowedOrigins.join(', '));
 
 // JSON Parser Middleware - Parse JSON request bodies
 // Converts JSON string to JavaScript object
-// BUT: Skip parsing for webhook routes (they need raw body)
+// BUT: Skip parsing for webhook routes (they need raw body for HMAC verification)
 app.use((req, res, next) => {
-  if (req.path.startsWith('/api/webhooks/')) {
+  if (req.path.startsWith('/webhooks/')) {
     // Store raw body for webhook signature verification
     let data = '';
     req.setEncoding('utf8');
     req.on('data', chunk => { data += chunk; });
     req.on('end', () => {
       req.rawBody = data;
-      req.body = JSON.parse(data);
+      try {
+        req.body = JSON.parse(data);
+      } catch (e) {
+        req.body = {};
+      }
       next();
     });
   } else {
-    next();
+    express.json()(req, res, next);
   }
 });
-app.use(express.json());
-console.log('✅ JSON parser enabled');
+console.log('✅ JSON parser enabled with webhook raw body support');
 
 // URL Encoded Parser - Parse form data
 app.use(express.urlencoded({ extended: true }));
