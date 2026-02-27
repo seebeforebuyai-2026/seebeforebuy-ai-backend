@@ -146,6 +146,9 @@ console.log('✅ Sync orders route loaded');
 const settingsRoute = require('./routes/settings');
 console.log('✅ Settings route loaded');
 
+const gdprWebhooksRoute = require('./routes/webhooks-gdpr');
+console.log('✅ GDPR webhooks route loaded');
+
 // ============================================
 // 6. REGISTER ROUTES
 // ============================================
@@ -178,6 +181,11 @@ console.log('✅ Route registered: POST /api/sync-orders');
 app.use('/api/settings', settingsRoute);
 console.log('✅ Route registered: GET /api/settings/:shop_domain');
 console.log('✅ Route registered: POST /api/settings/:shop_domain');
+
+app.use('/webhooks', gdprWebhooksRoute);
+console.log('✅ Route registered: POST /webhooks/customers/data_request');
+console.log('✅ Route registered: POST /webhooks/customers/redact');
+console.log('✅ Route registered: POST /webhooks/shop/redact');
 
 // ============================================
 // 7. HEALTH CHECK ENDPOINT

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # See Before Buy - Backend API
 
 Node.js backend for the See Before Buy Shopify app. Handles image generation with Gemini AI, usage tracking, and multi-client management.
@@ -169,3 +170,6 @@ Upgrade shop plan (called from external website after payment).
 - Limit resets monthly
 - Shops are auto-created on first request
 - Usage is tracked per shop domain
+=======
+# seebeforebuy-ai-backend
+>>>>>>> af56220830aec25dc39dcf4d522ceb62987328ba
