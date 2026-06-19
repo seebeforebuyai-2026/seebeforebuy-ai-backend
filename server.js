@@ -152,6 +152,9 @@ console.log('✅ Settings route loaded');
 const gdprWebhooksRoute = require('./routes/webhooks-gdpr');
 console.log('✅ GDPR webhooks route loaded');
 
+const downloadImageRoute = require('./routes/download-image');
+console.log('✅ Download image route loaded');
+
 // ============================================
 // 6. REGISTER ROUTES
 // ============================================
@@ -189,6 +192,9 @@ app.use('/webhooks', gdprWebhooksRoute);
 console.log('✅ Route registered: POST /webhooks/customers/data_request');
 console.log('✅ Route registered: POST /webhooks/customers/redact');
 console.log('✅ Route registered: POST /webhooks/shop/redact');
+
+app.use('/api/download-image', downloadImageRoute);
+console.log('✅ Route registered: GET /api/download-image');
 
 // ============================================
 // 7. HEALTH CHECK ENDPOINT
