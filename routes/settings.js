@@ -134,7 +134,13 @@ function getDefaultSettings() {
       generate_button_text: "Generate Preview",
       bg_color: "#FFFFFF",
       text_color: "#000000",
-      border_radius: 12
+      border_radius: 12,
+      header_bg_color: "#329580",
+      upload_area_bg_color: "#F6F6F7",
+      upload_btn_bg_color: "#329580",
+      upload_btn_text_color: "#FFFFFF",
+      generate_btn_bg_color: "#329580",
+      generate_btn_text_color: "#FFFFFF"
     },
     add_to_cart_button: {
       text: "Add to Cart",
@@ -202,6 +208,18 @@ function validateSettings(settings) {
 
   if (typeof settings.popup.border_radius !== 'number' || settings.popup.border_radius < 0 || settings.popup.border_radius > 50) {
     return 'popup.border_radius must be a number between 0 and 50';
+  }
+
+  // Validate optional new color fields (only if provided)
+  const optionalPopupColors = [
+    'header_bg_color', 'upload_area_bg_color',
+    'upload_btn_bg_color', 'upload_btn_text_color',
+    'generate_btn_bg_color', 'generate_btn_text_color'
+  ];
+  for (const field of optionalPopupColors) {
+    if (settings.popup[field] !== undefined && !isValidColor(settings.popup[field])) {
+      return `popup.${field} must be a valid hex color`;
+    }
   }
 
   // Check add_to_cart_button settings
