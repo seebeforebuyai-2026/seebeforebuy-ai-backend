@@ -535,8 +535,11 @@ async function uploadImageToS3(imageFile, productName) {
 
     const cleanProductName = (productName || "Unknown")
       .replace(/[\r\n]+/g, " ")
-      .replace(/[^\x20-\x7E]/g, "")
+      .replace(/[^\x20-\x7E]/g, "")  // strip non-ASCII
       .substring(0, 200);
+
+    // Also sanitize the filename itself
+    const safeProductName = cleanProductName.replace(/[^a-zA-Z0-9\-_]/g, '-').substring(0, 50);
 
     // Prepare S3 upload parameters
     const uploadParams = {
@@ -547,8 +550,7 @@ async function uploadImageToS3(imageFile, productName) {
       // Cache for 7 days — images are unique UUIDs so no stale content risk
       CacheControl: "public, max-age=604800, immutable",
       Metadata: {
-        "product-name": cleanProductName,
-        "original-name": imageFile.originalname,
+        "product-name": cleanProductName || "unknown",
         "upload-date": new Date().toISOString(),
       },
     };
