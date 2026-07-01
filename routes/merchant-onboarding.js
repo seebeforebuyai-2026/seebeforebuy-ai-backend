@@ -7,7 +7,7 @@
  * It creates their account automatically with:
  * - Shop information in DynamoDB
  * - Temporary password for external website login
- * - Free tier plan (15 images/month)
+ * - Free tier plan (50 images/month)
  * - Welcome email with credentials
  */
 
@@ -105,7 +105,7 @@ router.post('/', async (req, res) => {
       // Plan & Usage
       plan_type: 'free',
       images_used: 0,
-      images_limit: 15,
+      images_limit: 50,
       is_active: true,
       
       // App Status

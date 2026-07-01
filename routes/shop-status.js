@@ -146,7 +146,7 @@ router.post('/upgrade-plan', async (req, res) => {
     // Update shop plan
     const updatedShop = await ShopModel.updatePlan(shop_domain, {
       plan_type,
-      images_limit: images_limit || 15,
+      images_limit: images_limit || 50,
       external_user_id,
       stripe_customer_id,
       stripe_subscription_id,

@@ -119,7 +119,7 @@ async function sendWelcomeEmail(toEmail, shopName, temporaryPassword) {
     
     <h3>📊 Your Free Plan Includes:</h3>
     <ul>
-      <li>✅ 15 AI-generated images per month</li>
+      <li>✅ 50 AI-generated images per month</li>
       <li>✅ Unlimited product pages</li>
       <li>✅ Basic analytics</li>
       <li>✅ Email support</li>
@@ -164,7 +164,7 @@ Next Steps:
 3. Monitor your usage in the dashboard
 
 Your Free Plan Includes:
-- 15 AI-generated images per month
+- 50 AI-generated images per month
 - Unlimited product pages
 - Basic analytics
 - Email support
