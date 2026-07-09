@@ -62,7 +62,8 @@ router.post("/", upload.single("userImage"), async (req, res) => {
 
     // Call Gemini API with both user image and product image
     // Prefer per-request category from frontend, fall back to shop-level setting
-    const productCategory = req.body.product_category || shop.product_category || "apparel";
+    const productCategory =
+      req.body.product_category || shop.product_category || "apparel";
     console.log(`🏷️  Product category: ${productCategory}`);
 
     const aiResult = await generateImageWithGemini(
@@ -80,10 +81,11 @@ router.post("/", upload.single("userImage"), async (req, res) => {
 
     const generationTime = Date.now() - startTime;
 
-    // Fire-and-forget: log usage + generate styling advice without blocking response
     setImmediate(async () => {
       try {
-        const adviceModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const adviceModel = genAI.getGenerativeModel({
+          model: "gemini-3-pro-image",
+        });
         const advicePrompt = `Based on the product "${product_name}", give personalized styling advice in 2-3 sentences. Be encouraging and specific.`;
         const adviceResult = await adviceModel.generateContent([advicePrompt]);
         const aiDescription = adviceResult.response.text();
@@ -105,7 +107,9 @@ router.post("/", upload.single("userImage"), async (req, res) => {
       }
     });
 
-    console.log(`✅ Image ready — responding immediately (${generationTime}ms)`);
+    console.log(
+      `✅ Image ready — responding immediately (${generationTime}ms)`,
+    );
     console.log(`   Usage: ${shop.images_used + 1}/${shop.images_limit}`);
 
     res.json({
@@ -243,19 +247,60 @@ STYLE: premium streetwear/urban fashion editorial quality — clean, flattering 
 
   watch: (
     productName,
-  ) => `Generate a single, photorealistic photograph of the person from the customer image, now wearing the Watch shown in the product reference image.
+  ) => `You are simulating a real photograph of a customer wearing a watch — not compositing two images together. The final result must look like the watch ${productName} was physically on the customer's wrist when the original photo was taken.
 
-INPUT ROLES (read carefully):
-- CUSTOMER IMAGE: the real person (or their wrist/hand). This is the ONLY individual who appears in the result.
-- PRODUCT REFERENCE IMAGE: a reference of the ${productName}. Use it ONLY to read the watch's case shape, dial design, bezel, strap/bracelet type and color. Any display stand, box, model or background from this reference is ignored and never appears in the output.
+You will receive two images: (1) a photo of a real customer's wrist, and (2) a product photo of a watch on a plain background.
 
-THE OUTPUT IS ONE SINGLE PHOTOGRAPH of the customer in their original setting — one human being, photographed normally. There is no collage, split-screen, grid, before/after, duplicate person, or separate watch picture anywhere in the frame.
+BEFORE generating anything, analyze image 1 and determine:
+- The exact angle of the wrist relative to the camera (is it angled away, rotated, foreshortened? Most wrist photos are NOT a flat front-on view — the hand/arm creates a 3D twist.)
+- The single dominant light source direction (e.g. "harsh light from camera-flash, head-on" or "soft daylight from upper-left"). Look at the shadows already on the hand and skin in image 1 to determine this — the shadow side of the fingers and the highlight side of the knuckles tell you exactly where the light is coming from.
+- The color temperature of that light (cool blue-white flash vs warm ambient light vs neutral daylight).
 
-KEEP IDENTICAL TO THE CUSTOMER IMAGE: the same face and features, skin tone, clothing, arm and hand, and background. Hands stay anatomically correct — five fingers each, natural proportions.
+You must use this analysis to control how you render the watch. Do not skip this step.
 
-PLACE THE WATCH AT CORRECT REAL-WORLD SCALE AND POSITION: fit the ${productName} snugly around the customer's wrist. The watch case must be proportionate to the wrist — sized like a standard 38–42 mm wristwatch relative to the body; never oversized, bloated or floating. The band (leather strap, steel link bracelet or rubber strap) wraps naturally around the wrist contours. The case lies flat against the wrist bone with no gap. Render crisp details on the dial, bezel, hands and markers with natural metallic reflections on the case and glass, and a soft contact shadow on the skin.
+CORE RULE — THIS IS NOT A STICKER:
+A flat, front-facing, evenly-lit photo of the watch dial pasted onto the wrist is a FAILURE. If the wrist in image 1 is angled even slightly, the watch case and dial MUST be rendered at that same angle — foreshortened, with one side of the case closer to camera and larger, the other side smaller and receding. A perfectly circular, perfectly flat dial facing the camera when the wrist itself is turned is the single biggest sign of failure — check for this explicitly before finalizing.
 
-STYLE: luxury watch advertisement quality — sharp, richly detailed, fully photorealistic. Preserve the customer photo's original framing and aspect ratio.`,
+1. WRIST IDENTIFICATION AND PLACEMENT:
+   - Locate the wrist in image 1. Position the watch case centered on top of the wrist, between the wrist bone and the base of the hand.
+   - Match the watch case's rotation and tilt to the wrist's actual rotation in the photo. If the camera is looking at the wrist from above-and-to-the-side (the common phone-selfie angle), the dial must be rendered as an ellipse, not a circle, with the far edge of the case compressed.
+   - Scale the case and strap width to the real wrist thickness shown in image 1, not the product photo's apparent scale.
+
+2. STRAP MUST WRAP — NO EXCEPTIONS:
+   - The strap is a 3D band going around a cylinder (the wrist). You must render: the near side of the strap (facing camera, fully visible), the strap curving away at both left and right edges of the wrist, and — critically — a sliver of the strap's underside or far side becoming foreshortened/disappearing behind the wrist.
+   - If it is a metal bracelet: render individual links as separate 3D segments that get narrower/more compressed as they wrap toward the side of the wrist, not a flat printed pattern.
+   - If it is a leather/fabric strap: render a visible fold or crease where the strap bends to follow the wrist curve, plus a soft shadow the strap casts onto the skin directly beneath it.
+   - The strap must visibly press into the skin slightly at the edges — skin should show a very subtle compression line where the strap edge meets it, exactly like a real worn watch.
+
+3. RELIGHT THE WATCH TO MATCH IMAGE 1 — DO NOT REUSE THE PRODUCT PHOTO'S LIGHTING:
+   - Throw away the lighting, shadows, and highlights from the product photo (image 2) entirely. Only keep its shape, color, and material identity (what metal, what dial color/design, what strap type).
+   - Re-render the watch as if it were lit by the exact light source you identified on the customer's skin in image 1, matching direction, harshness, and color temperature.
+   - If image 1 shows hard direct flash (small tight highlights on knuckles, deep short shadows): the watch crystal must show one small, sharp, bright reflection point, not a soft glow. Metal must show tight, high-contrast specular highlights with darker mid-tones, not even brightness across the whole case.
+   - If image 1 shows soft ambient light (long soft shadows, gradual transitions on skin): the watch must show broader, dimmer reflections, smoother gradients across the metal, no harsh hotspot.
+   - Either way: the brightest point on the watch metal and the brightest point on the customer's adjacent skin must come from the same direction. If the skin is brightest on its upper-left edge, the watch's brightest highlight must also be on its upper-left edge. This consistency check is mandatory.
+
+4. MATERIAL REALISM — AVOID THE "PLASTIC" LOOK:
+   - Polished metal is never one flat color. It must show: a dark contact-shadow edge where it meets skin, a mid-tone body color, and one or two small bright specular points — never a uniform flat fill.
+   - The watch crystal (glass) must show a faint reflective sheen at an angle consistent with the light direction — think of it as a slightly convex mirror catching one bright streak, not a transparent flat circle showing the dial perfectly clearly with zero glare.
+   - Do not increase the saturation or sharpness of the watch beyond what is naturally present elsewhere in image 1. If the customer's skin has slight photographic noise/grain from the original camera, the watch must show matching grain — an unnaturally crisp, noise-free watch next to grainier skin is a dead giveaway of compositing.
+
+5. SHADOW CONTACT:
+   - Render a contact shadow directly underneath the watch case where it touches the wrist, with the shadow direction and softness matching the light source from image 1 (hard flash = short sharp shadow directly under the case; soft ambient = wider, softer shadow extending slightly to the side opposite the light).
+
+6. PRESERVE EVERYTHING ELSE:
+   - Do not alter the customer's wrist, hand, skin tone, skin texture, pose, or background except where the watch occludes skin or casts a shadow.
+   - Preserve the dial's actual numerals, hands, color, and any text exactly as shown in the product photo — only the lighting/shading on top of that design should change, not the design itself.
+   - Output resolution and aspect ratio must match image 1.
+
+7. SELF-CHECK BEFORE OUTPUT — verify all of these are true, and if any fail, regenerate:
+   - Is the dial an ellipse (foreshortened), not a perfect circle, if the wrist is angled?
+   - Does the strap visibly wrap around the side of the wrist, with at least one part receding/foreshortened?
+   - Does the brightest highlight on the watch match the brightest highlight direction on the adjacent skin?
+   - Does the metal show varied tones (highlight, mid-tone, shadow edge) rather than one flat color?
+
+8. IF THE WRIST IS NOT CLEARLY VISIBLE OR AT AN UNUSABLE ANGLE (closed fist, wrist out of frame), return the original photo unmodified — do not force a placement.
+
+Output only the final photorealistic image. No text, no borders, no watermark.`,
 
   shoes: (
     productName,
@@ -275,25 +320,47 @@ STYLE: premium footwear campaign quality — sharp, clean, flattering light, ful
 
   jewellery: (
     productName,
-  ) => `Generate a single, photorealistic photograph of the person from the customer image, now wearing the jewellery shown in the product reference image.
- 
-INPUT ROLES (read carefully):
-- CUSTOMER IMAGE: the real person (or hand). This is the ONLY individual who appears in the result.
-- PRODUCT REFERENCE IMAGE: a reference of the ${productName}. Use it ONLY to read the jewellery's exact shape, metal color, gemstones and design. Any display stand, box, model or background from this reference is ignored and never appears in the output.
- 
-THE OUTPUT IS ONE SINGLE PHOTOGRAPH of the customer in their original setting — one human being, photographed normally. There is no collage, split-screen, grid, duplicate person, or separate picture of the jewellery anywhere in the frame.
- 
-KEEP IDENTICAL TO THE CUSTOMER IMAGE: the same face, skin tone, hands, fingers, nails and identity, the same exact pose, and the same background and lighting. Hands stay anatomically correct: one thumb and four fingers per hand, correct knuckles and proportions, no extra or merged fingers.
- 
-PLACE THE JEWELLERY AT CORRECT REAL-WORLD SCALE, exactly as a real piece would sit:
-- Ring: place ONE ring around EXACTLY ONE finger. The band fully encircles that single finger and touches no neighbouring finger. Size the band to that finger's width so it hugs the skin snugly with no gap and no overlap onto adjacent fingers, sitting naturally at the base of the finger like a worn ring. Show realistic metal reflections and gemstone sparkle. Render only the number of rings shown in the reference.
-- Necklace: rests around the neck and follows the natural neckline, with realistic chain links and the pendant hanging straight down under its own weight.
-- Earrings: one on each earlobe, hanging with natural weight and matching the pair in the reference.
-- Bracelet: wraps once around the wrist, sized to the wrist so it rests naturally without floating or cutting in.
- 
-The jewellery looks expensive and real, with fine metal and gemstone detail and lighting that matches the customer's scene. The skin around it looks natural and radiant.
- 
-STYLE: luxury jewellery advertisement quality — crisp, richly detailed, fully photorealistic. Preserve the customer photo's original framing and aspect ratio.`,
+  ) => `You are a professional jewellery photo compositor. You will receive two images: (1) a photo of a real customer (showing their hand, neck, or ears), and (2) a product photo of a jewellery item (${productName}). Your task is to generate a single photorealistic image showing the customer wearing the exact product from image 2, composited naturally onto their body from image 1.
+
+STRICT RULES — DO NOT DEVIATE:
+
+1. IDENTIFY THE JEWELLERY TYPE from image 2 first (ring / necklace / earrings) and apply the matching placement rule below. Do not guess — use the product image to confirm category before placing it.
+
+2. RING PLACEMENT:
+   - Identify the customer's RING FINGER only (fourth finger, between the middle finger and pinky) on ONE hand, unless the original photo clearly shows both hands posed for rings.
+   - The ring must sit at the base of the finger, around a single knuckle (the lowest knuckle, where a ring naturally rests). Never let the band stretch, bridge, or touch two separate fingers.
+   - Match the ring's circular band shape to the actual curvature and width of that specific finger. The visible band width must be proportional to the finger's real thickness shown in the original photo — do not enlarge or shrink the ring to a generic size.
+   - The ring must not float above the skin or sink below it. The band sits flush against the skin with a small, realistic shadow gap only where skin curves away from the metal (just below the knuckle).
+
+3. NECKLACE PLACEMENT:
+   - Drape the necklace naturally along the customer's collarbone and neck curve, following gravity. The chain must follow the contour of the neck and chest, not float in front as a flat 2D overlay.
+   - The pendant (if any) must hang centered and pointing straight down due to gravity, resting against the skin or clothing naturally — never sideways or tilted unless the person's body is tilted.
+   - Where the chain crosses clothing versus skin, adjust opacity and shadow contact accordingly — chain on skin shows soft contact shadow, chain on fabric shows a slightly more defined edge.
+
+4. EARRING PLACEMENT:
+   - Anchor earrings precisely at the earlobe (for studs/drops) or the upper ear cartilage (only if the product image shows a cartilage piece). Do not place earrings mid-air near the ear.
+   - Drop earrings must hang straight down following gravity, swinging naturally away from the neck, never clipping into hair or the jawline.
+   - Match earring scale to the actual ear size visible in the original photo.
+
+5. MATERIAL AND LIGHTING — CRITICAL FOR REALISM:
+   - Extract the lighting direction, color temperature, and intensity from the ORIGINAL CUSTOMER PHOTO (image 1), not from the product photo. The jewellery must be lit as if it exists in the same room/light as the customer.
+   - Preserve the product's actual material properties from image 2 (gold tone, silver tone, gemstone color, polish level) but re-render its specular highlights and reflections to match the light source(s) visible on the customer's skin in image 1.
+   - Metal must show realistic specular highlights (small, sharp bright points) and soft ambient reflections of nearby skin tone — metal sitting on skin always picks up a faint warm reflection from that skin. Avoid flat, uniform, plastic-looking material with no highlight variation.
+   - Gemstones must show internal light refraction (a bright core highlight plus subtle color dispersion at edges), not a flat painted circle.
+   - Do not oversaturate or oversharpen the jewellery relative to the rest of the image — it must look like it was photographed in the same shot as the customer, with matching grain, sharpness, and depth of field.
+
+6. SCALE AND PERSPECTIVE:
+   - Match the jewellery's perspective and angle to the body part it sits on. A ring on a finger angled toward the camera must be foreshortened correctly, not pasted flat.
+   - Do not resize the jewellery item from its true proportions shown in the product photo (image 2) beyond what is needed for correct relative scale to the customer's body part.
+
+7. PRESERVE EVERYTHING ELSE:
+   - Do not alter the customer's hand, neck, ears, skin tone, skin texture, pose, or background in any way except where the jewellery physically occludes or casts a shadow on the skin.
+   - Do not add, remove, or modify any other jewellery, clothing, or accessories already visible in the original photo.
+   - Output resolution and aspect ratio must match the original customer photo (image 1).
+
+8. IF THE ORIGINAL PHOTO DOES NOT CLEARLY SHOW A SUITABLE BODY PART (e.g., no visible hand for a ring, no visible neck for a necklace, no visible ears for earrings), do not attempt placement — instead return the original photo unmodified with no jewellery added.
+
+Output only the final composited photorealistic image. No text, no borders, no watermark.`,
 
   footwear: (
     productName,
@@ -310,7 +377,7 @@ KEEP IDENTICAL TO THE CUSTOMER IMAGE: the same face and features, skin tone, hai
 CHANGE ONLY THE FOOTWEAR: put the ${productName} on the customer's feet as a matching left-and-right pair, one shoe per foot, matching the reference's exact color, design and material. Each shoe is sized to its foot for a natural, realistic fit, with believable laces, sole, texture and material. The shoes make proper contact with the ground and cast natural shadows beneath them — never floating.
  
 STYLE: premium footwear campaign quality — sharp, clean, flattering light, fully photorealistic, shoes clearly visible and prominent. Preserve the customer photo's original framing and aspect ratio.`,
- 
+
   accessories: (
     productName,
   ) => `Generate a single, photorealistic photograph of the person from the customer image, now wearing or holding the accessory shown in the product reference image.
@@ -390,9 +457,8 @@ async function generateImageWithGemini(
       console.log("   Product name only:", productName);
     }
 
-    // Step 2: Generate virtual try-on image with Gemini 2.5 Flash Image
     console.log(
-      "🎨 Step 2: Generating virtual try-on with Gemini 2.5 Flash Image...",
+      "🎨 Step 2: Generating virtual try-on with gemini-3-pro-image Image...",
     );
     const imageModel = genAI.getGenerativeModel({
       model: "gemini-3-pro-image",
@@ -491,8 +557,12 @@ async function generateImageWithGemini(
     const compressedBuffer = await sharp(generatedImageBuffer)
       .jpeg({ quality: 82, progressive: true, mozjpeg: true })
       .toBuffer();
-    console.log("   Compressed size:", compressedBuffer.length, "bytes",
-      `(${Math.round((1 - compressedBuffer.length / generatedImageBuffer.length) * 100)}% smaller)`);
+    console.log(
+      "   Compressed size:",
+      compressedBuffer.length,
+      "bytes",
+      `(${Math.round((1 - compressedBuffer.length / generatedImageBuffer.length) * 100)}% smaller)`,
+    );
 
     // Create file object for S3 upload (JPEG now)
     const generatedImageFile = {
@@ -530,16 +600,21 @@ async function uploadImageToS3(imageFile, productName) {
     console.log("📤 Uploading image to S3...");
 
     // Generate unique filename
-    const ext = imageFile.mimetype === "image/jpeg" ? "jpg" : imageFile.originalname.split(".").pop();
+    const ext =
+      imageFile.mimetype === "image/jpeg"
+        ? "jpg"
+        : imageFile.originalname.split(".").pop();
     const fileName = `generated/${uuidv4()}.${ext}`;
 
     const cleanProductName = (productName || "Unknown")
       .replace(/[\r\n]+/g, " ")
-      .replace(/[^\x20-\x7E]/g, "")  // strip non-ASCII
+      .replace(/[^\x20-\x7E]/g, "") // strip non-ASCII
       .substring(0, 200);
 
     // Also sanitize the filename itself
-    const safeProductName = cleanProductName.replace(/[^a-zA-Z0-9\-_]/g, '-').substring(0, 50);
+    const safeProductName = cleanProductName
+      .replace(/[^a-zA-Z0-9\-_]/g, "-")
+      .substring(0, 50);
 
     // Prepare S3 upload parameters
     const uploadParams = {

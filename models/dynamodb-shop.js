@@ -36,7 +36,7 @@ class ShopModel {
         shop_id: shop_domain.split('.')[0],
         plan_type: 'free',
         images_used: 0,
-        images_limit: 15,
+        images_limit:50,
         is_active: true,
         app_status: 'disabled', // New field for activation status
         product_category: null, // Single category (apparel, jewellery, footwear, accessories)
