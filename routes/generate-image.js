@@ -1,8 +1,8 @@
-// Generate image route - handles Vertex AI Imagen calls
+// Generate image route - handles Vertex AI image generation
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
-const { VertexAI } = require("@google-cloud/vertexai");
+const { GoogleAuth } = require("google-auth-library");
 const { PutObjectCommand } = require("@aws-sdk/client-s3");
 const { s3Client, bucketName } = require("../config/s3");
 const ShopModel = require("../models/dynamodb-shop");
@@ -17,18 +17,22 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
 });
 
-// Initialize Vertex AI with service account key file
+// Vertex AI config
 const KEY_FILE = path.join(__dirname, "../new-project-profitfirst-fc93b0361f88.json");
 const PROJECT_ID = "new-project-profitfirst";
 const LOCATION = "us-central1";
+const VERTEX_MODEL = "gemini-2.5-flash-image"; // Confirmed working July 2026
 
-const vertexAI = new VertexAI({
-  project: PROJECT_ID,
-  location: LOCATION,
-  googleAuthOptions: {
+// Get fresh OAuth token for each request (tokens expire after 1 hour)
+async function getVertexToken() {
+  const auth = new GoogleAuth({
     keyFile: KEY_FILE,
-  },
-});
+    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+  });
+  const client = await auth.getClient();
+  const tokenRes = await client.getAccessToken();
+  return tokenRes.token;
+}
 
 router.post("/", upload.single("userImage"), async (req, res) => {
   const startTime = Date.now();
@@ -448,86 +452,77 @@ async function generateImageWithGemini(
     const virtualTryOnPrompt = promptFunction(productName);
     console.log(`📝 Using ${productCategory} prompt (${virtualTryOnPrompt.length} chars)`);
 
-    // Step 3: Call Vertex AI — gemini-2.0-flash-exp supports image output
-    console.log("🎨 Step 3: Calling Vertex AI gemini-2.0-flash-exp...");
-    const generativeModel = vertexAI.getGenerativeModel({
-      model: "gemini-2.0-flash-exp",
-      generationConfig: {
-        responseModalities: ["IMAGE", "TEXT"],
-      },
-    });
+    // Step 3: Get OAuth token + call Vertex AI via REST
+    console.log(`🎨 Step 3: Calling Vertex AI ${VERTEX_MODEL}...`);
+    const token = await getVertexToken();
 
-    // Build parts array
     const parts = [
       { text: virtualTryOnPrompt },
-      {
-        inlineData: {
-          mimeType: userImageMimeType,
-          data: userImageBase64,
-        },
-      },
+      { inlineData: { mimeType: userImageMimeType, data: userImageBase64 } },
     ];
 
     if (productImageBase64) {
-      parts.push({
-        inlineData: {
-          mimeType: productImageMimeType,
-          data: productImageBase64,
-        },
-      });
+      parts.push({ inlineData: { mimeType: productImageMimeType, data: productImageBase64 } });
       console.log("✅ Product image included in request");
     }
 
+    const endpoint = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent`;
+
     console.log("⏳ Generating image (15-30 seconds)...");
-    const result = await generativeModel.generateContent({ contents: [{ role: "user", parts }] });
-    const response = result.response;
+    const apiRes = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts }],
+        generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+      }),
+    });
+
+    if (!apiRes.ok) {
+      const errText = await apiRes.text();
+      throw new Error(`Vertex AI API error ${apiRes.status}: ${errText.substring(0, 300)}`);
+    }
+
+    const response = await apiRes.json();
     console.log("📥 Response received from Vertex AI");
 
-    // Step 4: Extract generated image from response
+    // Step 4: Extract generated image
     let generatedImageBuffer = null;
-
-    if (response.candidates && response.candidates[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData?.data) {
-          generatedImageBuffer = Buffer.from(part.inlineData.data, "base64");
-          console.log(`✅ Image extracted — ${generatedImageBuffer.length} bytes`);
-          break;
-        }
+    const candidates = response?.candidates?.[0]?.content?.parts || [];
+    for (const part of candidates) {
+      if (part.inlineData?.data) {
+        generatedImageBuffer = Buffer.from(part.inlineData.data, "base64");
+        console.log(`✅ Image extracted — ${generatedImageBuffer.length} bytes`);
+        break;
       }
     }
 
     if (!generatedImageBuffer) {
-      console.error("❌ No image in response. Full response:");
-      console.error(JSON.stringify(response, null, 2).substring(0, 800));
-      throw new Error("Vertex AI did not return an image. Check model availability and API enablement.");
+      console.error("❌ No image in response:", JSON.stringify(response).substring(0, 500));
+      throw new Error("Vertex AI did not return an image.");
     }
 
     // Step 5: Compress PNG → JPEG
-    console.log("🗜️  Compressing image PNG → JPEG...");
+    console.log("🗜️  Compressing...");
     const compressedBuffer = await sharp(generatedImageBuffer)
       .jpeg({ quality: 82, progressive: true, mozjpeg: true })
       .toBuffer();
     console.log(`   ${generatedImageBuffer.length} → ${compressedBuffer.length} bytes (${Math.round((1 - compressedBuffer.length / generatedImageBuffer.length) * 100)}% smaller)`);
 
-    const generatedImageFile = {
-      buffer: compressedBuffer,
-      originalname: `vertex-tryon.jpg`,
-      mimetype: "image/jpeg",
-    };
-
     // Step 6: Upload to S3
     console.log("📤 Step 6: Uploading to S3...");
-    const s3Url = await uploadImageToS3(generatedImageFile, productName);
+    const s3Url = await uploadImageToS3(
+      { buffer: compressedBuffer, originalname: "vertex-tryon.jpg", mimetype: "image/jpeg" },
+      productName
+    );
     console.log("✅ Complete! Virtual try-on image ready");
-
     return { imageUrl: s3Url };
 
   } catch (error) {
     console.error("❌ Vertex AI generation error:", error.message);
-    console.error("   Full error:", error);
-
-    // Fallback: return original user image so app doesn't completely break
-    console.log("⚠️  Falling back to original image");
     try {
       const imageUrl = await uploadImageToS3(userImage, productName);
       return { imageUrl };
