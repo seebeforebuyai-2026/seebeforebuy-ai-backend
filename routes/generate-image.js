@@ -1,14 +1,15 @@
-// Generate image route - handles Gemini API calls
+// Generate image route - handles Vertex AI Imagen calls
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { VertexAI } = require("@google-cloud/vertexai");
 const { PutObjectCommand } = require("@aws-sdk/client-s3");
 const { s3Client, bucketName } = require("../config/s3");
 const ShopModel = require("../models/dynamodb-shop");
 const UsageLogModel = require("../models/dynamodb-usage-log");
 const { v4: uuidv4 } = require("uuid");
 const sharp = require("sharp");
+const path = require("path");
 
 // Configure multer for image upload (memory storage)
 const upload = multer({
@@ -16,8 +17,18 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
 });
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Initialize Vertex AI with service account key file
+const KEY_FILE = path.join(__dirname, "../new-project-profitfirst-fc93b0361f88.json");
+const PROJECT_ID = "new-project-profitfirst";
+const LOCATION = "us-central1";
+
+const vertexAI = new VertexAI({
+  project: PROJECT_ID,
+  location: LOCATION,
+  googleAuthOptions: {
+    keyFile: KEY_FILE,
+  },
+});
 
 router.post("/", upload.single("userImage"), async (req, res) => {
   const startTime = Date.now();
@@ -83,13 +94,6 @@ router.post("/", upload.single("userImage"), async (req, res) => {
 
     setImmediate(async () => {
       try {
-        const adviceModel = genAI.getGenerativeModel({
-          model: "gemini-3-pro-image",
-        });
-        const advicePrompt = `Based on the product "${product_name}", give personalized styling advice in 2-3 sentences. Be encouraging and specific.`;
-        const adviceResult = await adviceModel.generateContent([advicePrompt]);
-        const aiDescription = adviceResult.response.text();
-
         await UsageLogModel.create({
           shop_domain,
           shop_id: shop.shop_id,
@@ -99,9 +103,8 @@ router.post("/", upload.single("userImage"), async (req, res) => {
           product_image_url,
           generated_image_url: generatedImageUrl,
           generation_time_ms: generationTime,
-          ai_description: aiDescription,
         });
-        console.log(`✅ Background: usage logged + styling advice saved`);
+        console.log(`✅ Background: usage logged`);
       } catch (bgErr) {
         console.error("⚠️  Background task error (non-fatal):", bgErr.message);
       }
@@ -410,70 +413,52 @@ async function generateImageWithGemini(
   productCategory = "apparel",
 ) {
   try {
-    console.log("🎨 Starting AI virtual try-on generation...");
+    console.log("🎨 Starting Vertex AI virtual try-on generation...");
     console.log("   Product:", productName);
     console.log("   Category:", productCategory);
     console.log("   User image size:", userImage.size, "bytes");
-    console.log("   Product image URL:", productImageUrl);
 
     const userImageBase64 = userImage.buffer.toString("base64");
     const userImageMimeType = userImage.mimetype;
 
-    // Step 1: Download product image if URL is provided
+    // Step 1: Download product image
     let productImageBase64 = null;
     let productImageMimeType = "image/jpeg";
 
     if (productImageUrl) {
       console.log("📥 Step 1: Downloading product image...");
-      console.log("   URL:", productImageUrl);
       try {
         const productResponse = await fetch(productImageUrl);
-
         if (!productResponse.ok) {
-          throw new Error(
-            `HTTP ${productResponse.status}: ${productResponse.statusText}`,
-          );
+          throw new Error(`HTTP ${productResponse.status}: ${productResponse.statusText}`);
         }
-
         const productBuffer = Buffer.from(await productResponse.arrayBuffer());
         productImageBase64 = productBuffer.toString("base64");
-
-        // Detect mime type from URL or response
         const contentType = productResponse.headers.get("content-type");
-        if (contentType) {
-          productImageMimeType = contentType;
-        }
-
-        console.log("✅ Product image downloaded");
-        console.log("   Size:", productBuffer.length, "bytes");
-        console.log("   Type:", productImageMimeType);
+        if (contentType) productImageMimeType = contentType.split(";")[0].trim();
+        console.log("✅ Product image downloaded:", productBuffer.length, "bytes");
       } catch (error) {
         console.error("❌ Could not download product image:", error.message);
         console.log("   Continuing WITHOUT product image...");
-        console.log("   ⚠️  This will result in poor quality output!");
       }
-    } else {
-      console.warn("⚠️  No product image URL provided!");
-      console.log("   Product name only:", productName);
     }
 
-    console.log(
-      "🎨 Step 2: Generating virtual try-on with gemini-3-pro-image Image...",
-    );
-    const imageModel = genAI.getGenerativeModel({
-      model: "gemini-3-pro-image",
+    // Step 2: Get category prompt
+    const promptFunction = CATEGORY_PROMPTS[productCategory] || CATEGORY_PROMPTS.apparel;
+    const virtualTryOnPrompt = promptFunction(productName);
+    console.log(`📝 Using ${productCategory} prompt (${virtualTryOnPrompt.length} chars)`);
+
+    // Step 3: Call Vertex AI — gemini-2.0-flash-exp supports image output
+    console.log("🎨 Step 3: Calling Vertex AI gemini-2.0-flash-exp...");
+    const generativeModel = vertexAI.getGenerativeModel({
+      model: "gemini-2.0-flash-exp",
+      generationConfig: {
+        responseModalities: ["IMAGE", "TEXT"],
+      },
     });
 
-    // Get category-specific prompt
-    const promptFunction =
-      CATEGORY_PROMPTS[productCategory] || CATEGORY_PROMPTS.apparel;
-    const virtualTryOnPrompt = promptFunction(productName);
-
-    console.log(`📝 Using ${productCategory} prompt`);
-    console.log(`   Prompt length: ${virtualTryOnPrompt.length} characters`);
-
-    // Build content array for Gemini
-    const contentParts = [
+    // Build parts array
+    const parts = [
       { text: virtualTryOnPrompt },
       {
         inlineData: {
@@ -483,108 +468,66 @@ async function generateImageWithGemini(
       },
     ];
 
-    // Add product image if available
     if (productImageBase64) {
-      contentParts.push({
+      parts.push({
         inlineData: {
           mimeType: productImageMimeType,
           data: productImageBase64,
         },
       });
-      console.log("✅ Product image added to request");
-    } else {
-      console.warn("⚠️  WARNING: No product image in request!");
-      console.log("   This will likely produce poor results.");
-      console.log(
-        "   Make sure product_image_url is being sent from frontend.",
-      );
+      console.log("✅ Product image included in request");
     }
 
-    console.log(
-      "📊 Total images in request:",
-      contentParts.filter((p) => p.inlineData).length,
-    );
-    console.log("⏳ Generating image (this may take 10-30 seconds)...");
-    const imageResult = await imageModel.generateContent(contentParts);
-    const imageResponse = imageResult.response;
+    console.log("⏳ Generating image (15-30 seconds)...");
+    const result = await generativeModel.generateContent({ contents: [{ role: "user", parts }] });
+    const response = result.response;
+    console.log("📥 Response received from Vertex AI");
 
-    console.log("📥 Response received from Gemini");
-
-    // Step 3: Extract generated image
-    console.log("🔍 Step 3: Extracting generated image...");
+    // Step 4: Extract generated image from response
     let generatedImageBuffer = null;
 
-    if (imageResponse.candidates && imageResponse.candidates[0]) {
-      const candidate = imageResponse.candidates[0];
-
-      console.log("   Candidate found, checking for image data...");
-
-      if (candidate.content && candidate.content.parts) {
-        console.log("   Parts found:", candidate.content.parts.length);
-
-        for (let i = 0; i < candidate.content.parts.length; i++) {
-          const part = candidate.content.parts[i];
-
-          if (part.inlineData && part.inlineData.data) {
-            // Found generated image!
-            console.log(`✅ Generated image found in part ${i}`);
-            console.log("   Mime type:", part.inlineData.mimeType);
-            generatedImageBuffer = Buffer.from(part.inlineData.data, "base64");
-            console.log("   Image size:", generatedImageBuffer.length, "bytes");
-            break;
-          } else if (part.text) {
-            console.log(
-              `   Part ${i} contains text:`,
-              part.text.substring(0, 100),
-            );
-          }
+    if (response.candidates && response.candidates[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData?.data) {
+          generatedImageBuffer = Buffer.from(part.inlineData.data, "base64");
+          console.log(`✅ Image extracted — ${generatedImageBuffer.length} bytes`);
+          break;
         }
       }
     }
 
     if (!generatedImageBuffer) {
-      console.error("❌ No image generated in response");
-      console.log(
-        "   Response structure:",
-        JSON.stringify(imageResponse, null, 2).substring(0, 500),
-      );
-      throw new Error("No image generated in response");
+      console.error("❌ No image in response. Full response:");
+      console.error(JSON.stringify(response, null, 2).substring(0, 800));
+      throw new Error("Vertex AI did not return an image. Check model availability and API enablement.");
     }
 
-    // ── COMPRESS: PNG → JPEG (~300-500KB vs ~4MB raw PNG) ──────────────────
+    // Step 5: Compress PNG → JPEG
     console.log("🗜️  Compressing image PNG → JPEG...");
-    console.log("   Original size:", generatedImageBuffer.length, "bytes");
     const compressedBuffer = await sharp(generatedImageBuffer)
       .jpeg({ quality: 82, progressive: true, mozjpeg: true })
       .toBuffer();
-    console.log(
-      "   Compressed size:",
-      compressedBuffer.length,
-      "bytes",
-      `(${Math.round((1 - compressedBuffer.length / generatedImageBuffer.length) * 100)}% smaller)`,
-    );
+    console.log(`   ${generatedImageBuffer.length} → ${compressedBuffer.length} bytes (${Math.round((1 - compressedBuffer.length / generatedImageBuffer.length) * 100)}% smaller)`);
 
-    // Create file object for S3 upload (JPEG now)
     const generatedImageFile = {
       buffer: compressedBuffer,
-      originalname: `gemini-tryon-${productName}.jpg`,
+      originalname: `vertex-tryon.jpg`,
       mimetype: "image/jpeg",
     };
 
-    // Step 4: Upload to S3
-    console.log("📤 Step 4: Uploading to S3...");
+    // Step 6: Upload to S3
+    console.log("📤 Step 6: Uploading to S3...");
     const s3Url = await uploadImageToS3(generatedImageFile, productName);
-
     console.log("✅ Complete! Virtual try-on image ready");
 
     return { imageUrl: s3Url };
+
   } catch (error) {
-    console.error("❌ AI generation error:", error.message);
+    console.error("❌ Vertex AI generation error:", error.message);
     console.error("   Full error:", error);
 
-    // Fallback: Upload original image
+    // Fallback: return original user image so app doesn't completely break
     console.log("⚠️  Falling back to original image");
-
     try {
       const imageUrl = await uploadImageToS3(userImage, productName);
       return { imageUrl };

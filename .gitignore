@@ -6,6 +6,11 @@ node_modules/
 .env.local
 .env.production
 
+# Google Cloud service account keys - NEVER commit these
+*.json
+!package.json
+!package-lock.json
+
 # Logs
 logs/
 *.log
