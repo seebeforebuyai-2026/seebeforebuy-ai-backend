@@ -37,11 +37,14 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Validate category value (only 4 allowed)
-    const validCategories = ['apparel', 'jewellery', 'footwear', 'accessories'];
+    // Validate category — must match one of the 12 supported categories
+    const validCategories = [
+      'apparel', 'kurti', 'saree', 't_shirt', 'shirt', 'suit',
+      'streetwear', 'watch', 'shoes', 'jewellery', 'footwear', 'accessories'
+    ];
     if (!validCategories.includes(category)) {
       return res.status(400).json({ 
-        error: 'Invalid category. Must be one of: apparel, jewellery, footwear, accessories' 
+        error: `Invalid category. Must be one of: ${validCategories.join(', ')}` 
       });
     }
 
