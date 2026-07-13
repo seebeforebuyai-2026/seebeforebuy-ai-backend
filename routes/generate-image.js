@@ -162,15 +162,34 @@ STYLE: high-end fashion editorial quality — sharp, clean, flattering studio-or
 
 INPUT ROLES (read carefully):
 - CUSTOMER IMAGE: the real person. This is the ONLY individual who appears in the result.
-- PRODUCT REFERENCE IMAGE: a reference of the ${productName}. Use it ONLY to read the Kurti's color, cut, neckline, sleeve style, print and fabric. Any mannequin, hanger, model, packaging or background from this reference is ignored and never appears in the output.
+- PRODUCT REFERENCE IMAGE: the ${productName}. This is a KURTI — a traditional South Asian ethnic garment. Use it ONLY to copy its exact color, embroidery, print, neckline shape, sleeve style, hemline length and fabric texture.
 
-THE OUTPUT IS ONE SINGLE PHOTOGRAPH of the customer in their original setting — one human being, photographed normally. There is no collage, split-screen, grid, before/after, duplicate person, or separate garment picture anywhere in the frame.
+CRITICAL — WHAT THIS GARMENT IS AND IS NOT:
+This is a KURTI/KURTA — a long ethnic top or dress that:
+✅ Falls to the mid-thigh, knee, or below (NOT waist-length)
+✅ Has a round neck, V-neck, mandarin collar, or traditional ethnic neckline — NEVER a Western suit lapel
+✅ Has a straight or slightly flared silhouette — NOT a fitted blazer silhouette
+✅ Features traditional embroidery, thread work, mirror work, or block prints on the body and hem
+✅ Is made of flowing fabric (cotton, rayon, georgette, silk) that drapes softly
 
-KEEP IDENTICAL TO THE CUSTOMER IMAGE: the same face and facial features, the same skin tone, the same hairstyle, the same body shape and proportions, the same exact pose and stance, the same hands, arms, and lower body clothing (unless the product is a full set), and the same background and lighting. The person has one head, two arms, and two hands with five fingers each.
+❌ This is NOT a blazer, NOT a jacket, NOT a suit jacket, NOT a Western-style coat
+❌ It has NO lapels, NO suit collar, NO tailored revers, NO breast pocket
+❌ The embroidery on the neckline and hem is traditional ethnic embroidery, NOT a blazer lapel design
+❌ The garment does NOT end at the waist
 
-CHANGE ONLY THE UPPER GARMENT: dress the customer in the ${productName} Kurti/Kurta. Match the neckline precisely around the collar bones. Render the sleeve style (3/4, full, or half) accurately on the customer's arms. Reproduce the traditional prints, block prints, embroidery or solid colors with clean detail. The fabric (cotton, rayon, or silk) drapes with elegant straight folds matching the customer's posture, with realistic wrinkles and soft shadows.
+If the product image shows embroidery along the neckline edges — that is traditional kurti embroidery/gota work, NOT blazer lapels. Render it as ethnic embroidery on a flowing kurta top, never as a suit jacket.
 
-STYLE: ethnic fashion editorial quality — clean, flattering natural or studio light, premium and fully photorealistic. Preserve the customer photo's original framing and aspect ratio.`,
+THE OUTPUT IS ONE SINGLE PHOTOGRAPH of the customer in their original setting — one human being. No collage, split-screen, or duplicate.
+
+KEEP IDENTICAL: the same face, skin tone, hairstyle, body shape, pose, lower body clothing, hands, arms, and background.
+
+CHANGE ONLY THE UPPER GARMENT: dress the customer in the ${productName} Kurti. The kurti must:
+- Flow from the shoulders down to at least mid-thigh or knee level
+- Show the traditional neckline (round, V, or ethnic cut) — no lapels whatsoever
+- Display the embroidery, prints or thread work as flat ethnic surface decoration, not as structured garment construction
+- Drape naturally with soft fabric folds over the customer's body and pose
+
+STYLE: traditional South Asian ethnic fashion editorial — clean, flattering light, fully photorealistic. Preserve the customer photo's original framing and aspect ratio.`,
 
   saree: (
     productName,
