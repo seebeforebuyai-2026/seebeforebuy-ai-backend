@@ -158,54 +158,59 @@ STYLE: high-end fashion editorial quality — sharp, clean, flattering studio-or
 
   kurti: (
     productName,
-  ) => `Generate a single, photorealistic photograph of the person from the customer image, now wearing the Kurti/Kurta shown in the product reference image.
+  ) => `You will receive two images: (1) a CUSTOMER photo and (2) a PRODUCT photo of "${productName}".
 
-INPUT ROLES (read carefully):
-- CUSTOMER IMAGE: the real person. This is the ONLY individual who appears in the result.
-- PRODUCT REFERENCE IMAGE: the ${productName}. This is a KURTI — a traditional South Asian ethnic garment. Use it ONLY to copy its exact color, embroidery, print, neckline shape, sleeve style, hemline length and fabric texture.
+YOUR ONLY JOB: Make the customer in image 1 wear exactly the garment shown in image 2.
 
-CRITICAL — WHAT THIS GARMENT IS AND IS NOT:
-This is a KURTI/KURTA — a long ethnic top or dress that:
-✅ Falls to the mid-thigh, knee, or below (NOT waist-length)
-✅ Has a round neck, V-neck, mandarin collar, or traditional ethnic neckline — NEVER a Western suit lapel
-✅ Has a straight or slightly flared silhouette — NOT a fitted blazer silhouette
-✅ Features traditional embroidery, thread work, mirror work, or block prints on the body and hem
-✅ Is made of flowing fabric (cotton, rayon, georgette, silk) that drapes softly
+STEP 1 — STUDY THE PRODUCT IMAGE CAREFULLY:
+Look at image 2 and note precisely:
+- Exact garment length (where does the hemline fall — hip, mid-thigh, knee, or ankle?)
+- Exact neckline shape (round, V-neck, mandarin, asymmetric, deep-V — whatever you actually see)
+- Exact sleeve style and length (sleeveless, half, 3/4, full)
+- Exact color and pattern (solid, printed, embroidered — copy every detail)
+- Exact silhouette (straight, A-line, flared, asymmetric — as shown)
+- Any dupatta, pants, or bottom wear included as part of the set
 
-❌ This is NOT a blazer, NOT a jacket, NOT a suit jacket, NOT a Western-style coat
-❌ It has NO lapels, NO suit collar, NO tailored revers, NO breast pocket
-❌ The embroidery on the neckline and hem is traditional ethnic embroidery, NOT a blazer lapel design
-❌ The garment does NOT end at the waist
+DO NOT guess or assume. Copy only what is visually present in image 2.
 
-If the product image shows embroidery along the neckline edges — that is traditional kurti embroidery/gota work, NOT blazer lapels. Render it as ethnic embroidery on a flowing kurta top, never as a suit jacket.
+STEP 2 — APPLY TO THE CUSTOMER:
+Dress the customer from image 1 in exactly the garment analyzed from image 2.
+- The garment must fit the customer's body and pose naturally
+- The hemline must fall at the same relative point on the body as shown in image 2
+- All embroidery, prints, thread work, mirror work must appear on the correct parts of the garment (body, hem, sleeves, neckline) — exactly as positioned in the product image
+- Fabric must drape with realistic weight and soft folds
 
-THE OUTPUT IS ONE SINGLE PHOTOGRAPH of the customer in their original setting — one human being. No collage, split-screen, or duplicate.
+KEEP UNCHANGED: face, skin tone, hair, hands, body shape, pose, background. One person, one photo.
 
-KEEP IDENTICAL: the same face, skin tone, hairstyle, body shape, pose, lower body clothing, hands, arms, and background.
-
-CHANGE ONLY THE UPPER GARMENT: dress the customer in the ${productName} Kurti. The kurti must:
-- Flow from the shoulders down to at least mid-thigh or knee level
-- Show the traditional neckline (round, V, or ethnic cut) — no lapels whatsoever
-- Display the embroidery, prints or thread work as flat ethnic surface decoration, not as structured garment construction
-- Drape naturally with soft fabric folds over the customer's body and pose
-
-STYLE: traditional South Asian ethnic fashion editorial — clean, flattering light, fully photorealistic. Preserve the customer photo's original framing and aspect ratio.`,
+OUTPUT: A single photorealistic photograph. No split screen, no before/after, no duplicate. Premium ethnic fashion quality.`,
 
   saree: (
     productName,
-  ) => `Generate a single, photorealistic photograph of the person from the customer image, now wearing the Saree shown in the product reference image.
+  ) => `You will receive two images: (1) a CUSTOMER photo and (2) a PRODUCT photo of "${productName}".
 
-INPUT ROLES (read carefully):
-- CUSTOMER IMAGE: the real person. This is the ONLY individual who appears in the result.
-- PRODUCT REFERENCE IMAGE: a reference of the ${productName}. Use it ONLY to read the Saree's color, border design, fabric, weave pattern and blouse style. Any mannequin, model or background from this reference is ignored and never appears in the output.
+YOUR ONLY JOB: Make the customer in image 1 wear exactly the saree/ethnic outfit shown in image 2.
 
-THE OUTPUT IS ONE SINGLE PHOTOGRAPH of the customer in their original setting — one human being, photographed normally. There is no collage, split-screen, grid, before/after, duplicate person, or separate garment picture anywhere in the frame.
+STEP 1 — STUDY THE PRODUCT IMAGE CAREFULLY:
+Look at image 2 and note precisely:
+- Exact saree color, border width, border pattern, and body pattern
+- Exact fabric type visible (silk sheen, georgette flow, cotton matte, chiffon transparency)
+- Exact blouse style, color, neckline, sleeve length
+- Pallu style — whether it is spread, pinned, or draped over shoulder
+- Any embellishments: zari, embroidery, sequins, mirror work, woven motifs — their exact positions
 
-KEEP IDENTICAL TO THE CUSTOMER IMAGE: the same face and facial features, the same skin tone, the same hairstyle and the same background and lighting. The person has one head, two arms, and two hands with five fingers each.
+DO NOT assume or invent drape details. Copy only what is visually present in image 2.
 
-DRAPE THE SAREE ELEGANTLY: the pallu (decorative end) cascades naturally over the left shoulder, and the waist pleats are neatly aligned at the customer's waistline following their body contours. The blouse design and sleeve cut from the reference fits seamlessly on the customer. Reproduce intricate zari borders, silk/georgette textures and woven motifs with high fidelity. The fabric flows with natural movement and realistic drape.
+STEP 2 — APPLY TO THE CUSTOMER:
+Drape the saree from image 2 on the customer from image 1:
+- Pallu falls naturally over the left shoulder following the customer's pose
+- Waist pleats align neatly at the customer's waistline
+- Blouse fits the customer's body with the exact design from image 2
+- Border, embroidery and motifs appear on the correct edges exactly as in the product
+- Fabric drapes with realistic weight and movement
 
-STYLE: luxury ethnic fashion editorial quality — rich, vibrant and fully photorealistic. Preserve the customer photo's original framing and aspect ratio.`,
+KEEP UNCHANGED: face, skin tone, hair, hands, body shape, pose, background.
+
+OUTPUT: A single photorealistic photograph. No split screen, no before/after. Luxury ethnic fashion quality.`,
 
   t_shirt: (
     productName,
