@@ -74,8 +74,11 @@ router.post("/", upload.single("userImage"), async (req, res) => {
       productCategory,
     );
 
-    // Extract image URL
+    // Extract image URL + prompt tracking info
     const generatedImageUrl = aiResult.imageUrl;
+    const promptCategory = aiResult.promptCategory || productCategory;
+    const promptPreview = aiResult.promptPreview || null;
+    const aiModel = aiResult.aiModel || "gpt-image-2";
 
     // Increment usage
     await ShopModel.incrementUsage(shop_domain);
@@ -93,8 +96,13 @@ router.post("/", upload.single("userImage"), async (req, res) => {
           product_image_url,
           generated_image_url: generatedImageUrl,
           generation_time_ms: generationTime,
+          // Prompt tracking — the key new fields
+          ai_model: aiModel,
+          prompt_category: promptCategory,
+          prompt_preview: promptPreview,
         });
         console.log(`✅ Background: usage logged`);
+        console.log(`   Model: ${aiModel} | Category: ${promptCategory}`);
       } catch (bgErr) {
         console.error("⚠️  Background task error (non-fatal):", bgErr.message);
       }
@@ -411,6 +419,17 @@ async function generateImageWithGemini(
     const promptText = promptFunction(productName);
     console.log(`📝 Using ${productCategory} prompt (${promptText.length} chars)`);
 
+    // ── DETAILED REQUEST LOG — visible in PM2 logs for every request ──────
+    console.log("┌─────────────────────────────────────────────────────");
+    console.log(`│ 🔍 AI REQUEST DETAILS`);
+    console.log(`│ Shop     : ${productName}`);
+    console.log(`│ Category : ${productCategory}`);
+    console.log(`│ Model    : gpt-image-2 (medium quality)`);
+    console.log(`│ Endpoint : ${OPENAI_ENDPOINT}`);
+    console.log(`│ Prompt preview (first 300 chars):`);
+    console.log(`│ ${promptText.substring(0, 300).replace(/\n/g, "\n│ ")}`);
+    console.log("└─────────────────────────────────────────────────────");
+
     // Step 2: Download product image
     let productImageBuffer = null;
     let productImageMimeType = "image/jpeg";
@@ -497,7 +516,12 @@ async function generateImageWithGemini(
       productName
     );
     console.log("✅ Complete! Virtual try-on image ready");
-    return { imageUrl: s3Url };
+    return {
+      imageUrl: s3Url,
+      promptCategory: productCategory,
+      promptPreview: promptText.substring(0, 500),
+      aiModel: "gpt-image-2",
+    };
 
   } catch (error) {
     console.error("❌ OpenAI generation error:", error.message);

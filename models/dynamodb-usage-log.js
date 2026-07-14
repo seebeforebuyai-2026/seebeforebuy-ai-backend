@@ -12,13 +12,17 @@ class UsageLogModel {
         shop_domain: logData.shop_domain,
         shop_id: logData.shop_id,
         event_type: logData.event_type,
-        session_id: logData.session_id || null,  // Add session ID for unique user tracking
+        session_id: logData.session_id || null,
         product_id: logData.product_id || null,
         product_name: logData.product_name || null,
         product_image_url: logData.product_image_url || null,
         user_image_url: logData.user_image_url || null,
         generated_image_url: logData.generated_image_url || null,
         generation_time_ms: logData.generation_time_ms || null,
+        // AI request tracking fields
+        ai_model: logData.ai_model || null,
+        prompt_category: logData.prompt_category || null,
+        prompt_preview: logData.prompt_preview || null, // first 500 chars of prompt
         created_at: new Date().toISOString(),
       };
 
