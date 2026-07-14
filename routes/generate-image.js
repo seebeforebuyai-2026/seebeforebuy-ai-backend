@@ -1,15 +1,14 @@
-// Generate image route - handles Vertex AI image generation
+// Generate image route - handles OpenAI gpt-image-2 virtual try-on
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
-const { GoogleAuth } = require("google-auth-library");
+const FormData = require("form-data");
 const { PutObjectCommand } = require("@aws-sdk/client-s3");
 const { s3Client, bucketName } = require("../config/s3");
 const ShopModel = require("../models/dynamodb-shop");
 const UsageLogModel = require("../models/dynamodb-usage-log");
 const { v4: uuidv4 } = require("uuid");
 const sharp = require("sharp");
-const path = require("path");
 
 // Configure multer for image upload (memory storage)
 const upload = multer({
@@ -17,22 +16,9 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
 });
 
-// Vertex AI config
-const KEY_FILE = path.join(__dirname, "../new-project-profitfirst-fc93b0361f88.json");
-const PROJECT_ID = "new-project-profitfirst";
-const LOCATION = "us-central1";
-const VERTEX_MODEL = "gemini-2.5-flash-image"; // Confirmed working July 2026
-
-// Get fresh OAuth token for each request (tokens expire after 1 hour)
-async function getVertexToken() {
-  const auth = new GoogleAuth({
-    keyFile: KEY_FILE,
-    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
-  });
-  const client = await auth.getClient();
-  const tokenRes = await client.getAccessToken();
-  return tokenRes.token;
-}
+// OpenAI config
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_ENDPOINT = "https://api.openai.com/v1/images/edits";
 
 router.post("/", upload.single("userImage"), async (req, res) => {
   const startTime = Date.now();
@@ -158,59 +144,29 @@ STYLE: high-end fashion editorial quality — sharp, clean, flattering studio-or
 
   kurti: (
     productName,
-  ) => `You will receive two images: (1) a CUSTOMER photo and (2) a PRODUCT photo of "${productName}".
+  ) => `Task: Perform a professional virtual Kurti/Kurta try-on.
+Target Subject: The person in the Customer Image (@Image1).
+Product to Try On: "${productName}" (shown in the Product Reference Image @Image2).
 
-YOUR ONLY JOB: Make the customer in image 1 wear exactly the garment shown in image 2.
-
-STEP 1 — STUDY THE PRODUCT IMAGE CAREFULLY:
-Look at image 2 and note precisely:
-- Exact garment length (where does the hemline fall — hip, mid-thigh, knee, or ankle?)
-- Exact neckline shape (round, V-neck, mandarin, asymmetric, deep-V — whatever you actually see)
-- Exact sleeve style and length (sleeveless, half, 3/4, full)
-- Exact color and pattern (solid, printed, embroidered — copy every detail)
-- Exact silhouette (straight, A-line, flared, asymmetric — as shown)
-- Any dupatta, pants, or bottom wear included as part of the set
-
-DO NOT guess or assume. Copy only what is visually present in image 2.
-
-STEP 2 — APPLY TO THE CUSTOMER:
-Dress the customer from image 1 in exactly the garment analyzed from image 2.
-- The garment must fit the customer's body and pose naturally
-- The hemline must fall at the same relative point on the body as shown in image 2
-- All embroidery, prints, thread work, mirror work must appear on the correct parts of the garment (body, hem, sleeves, neckline) — exactly as positioned in the product image
-- Fabric must drape with realistic weight and soft folds
-
-KEEP UNCHANGED: face, skin tone, hair, hands, body shape, pose, background. One person, one photo.
-
-OUTPUT: A single photorealistic photograph. No split screen, no before/after, no duplicate. Premium ethnic fashion quality.`,
+Instructions:
+1. Study @Image2 carefully — copy the EXACT garment shown: its length (hip/thigh/knee/ankle), neckline shape, sleeve style, color, embroidery, prints, and silhouette precisely as shown. Do not assume or invent any detail.
+2. Replace the current upper garment of the subject in @Image1 with the exact Kurti/Kurta from @Image2.
+3. Fit the neckline cleanly around the collar bones. Match the sleeves and hemline exactly as shown in @Image2 — if it is a short kurti, keep it short; if ankle-length, render it ankle-length.
+4. Reproduce all embroidery, block prints, or thread work from @Image2 as ethnic surface decoration on the fabric — never interpret neckline embroidery as blazer lapels.
+5. Strictly preserve the subject's face, hair, lower body clothing, hands, pose, and original background exactly as shown in @Image1.`,
 
   saree: (
     productName,
-  ) => `You will receive two images: (1) a CUSTOMER photo and (2) a PRODUCT photo of "${productName}".
+  ) => `Task: Perform a highly realistic virtual Saree try-on.
+Target Subject: The person in the Customer Image (@Image1).
+Product to Try On: "${productName}" (shown in the Product Reference Image @Image2).
 
-YOUR ONLY JOB: Make the customer in image 1 wear exactly the saree/ethnic outfit shown in image 2.
-
-STEP 1 — STUDY THE PRODUCT IMAGE CAREFULLY:
-Look at image 2 and note precisely:
-- Exact saree color, border width, border pattern, and body pattern
-- Exact fabric type visible (silk sheen, georgette flow, cotton matte, chiffon transparency)
-- Exact blouse style, color, neckline, sleeve length
-- Pallu style — whether it is spread, pinned, or draped over shoulder
-- Any embellishments: zari, embroidery, sequins, mirror work, woven motifs — their exact positions
-
-DO NOT assume or invent drape details. Copy only what is visually present in image 2.
-
-STEP 2 — APPLY TO THE CUSTOMER:
-Drape the saree from image 2 on the customer from image 1:
-- Pallu falls naturally over the left shoulder following the customer's pose
-- Waist pleats align neatly at the customer's waistline
-- Blouse fits the customer's body with the exact design from image 2
-- Border, embroidery and motifs appear on the correct edges exactly as in the product
-- Fabric drapes with realistic weight and movement
-
-KEEP UNCHANGED: face, skin tone, hair, hands, body shape, pose, background.
-
-OUTPUT: A single photorealistic photograph. No split screen, no before/after. Luxury ethnic fashion quality.`,
+Instructions:
+1. Elegantly drape the Saree "${productName}" shown in @Image2 onto the person in @Image1.
+2. The pallu (saree drape) must cascade naturally over the subject's left shoulder, and the waist pleats must align neatly to their waistline, matching their body contours.
+3. Match the blouse design and sleeve cut as depicted in @Image2, fitting it seamlessly to the subject.
+4. Preserve the intricate zari borders, silk/georgette textures, and woven motifs of the saree in @Image2 with high fidelity.
+5. Do not modify the subject's face, skin tone, expression, hairstyle, hands, or original background from @Image1.`,
 
   t_shirt: (
     productName,
@@ -441,112 +397,110 @@ async function generateImageWithGemini(
   productCategory = "apparel",
 ) {
   try {
-    console.log("🎨 Starting Vertex AI virtual try-on generation...");
+    console.log("🎨 Starting OpenAI gpt-image-2 virtual try-on...");
     console.log("   Product:", productName);
     console.log("   Category:", productCategory);
     console.log("   User image size:", userImage.size, "bytes");
 
-    const userImageBase64 = userImage.buffer.toString("base64");
-    const userImageMimeType = userImage.mimetype;
+    if (!OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not set in environment variables.");
+    }
 
-    // Step 1: Download product image
-    let productImageBase64 = null;
+    // Step 1: Get category-specific prompt
+    const promptFunction = CATEGORY_PROMPTS[productCategory] || CATEGORY_PROMPTS.apparel;
+    const promptText = promptFunction(productName);
+    console.log(`📝 Using ${productCategory} prompt (${promptText.length} chars)`);
+
+    // Step 2: Download product image
+    let productImageBuffer = null;
     let productImageMimeType = "image/jpeg";
 
     if (productImageUrl) {
-      console.log("📥 Step 1: Downloading product image...");
+      console.log("📥 Step 2: Downloading product image...");
       try {
         const productResponse = await fetch(productImageUrl);
-        if (!productResponse.ok) {
-          throw new Error(`HTTP ${productResponse.status}: ${productResponse.statusText}`);
-        }
-        const productBuffer = Buffer.from(await productResponse.arrayBuffer());
-        productImageBase64 = productBuffer.toString("base64");
-        const contentType = productResponse.headers.get("content-type");
-        if (contentType) productImageMimeType = contentType.split(";")[0].trim();
-        console.log("✅ Product image downloaded:", productBuffer.length, "bytes");
-      } catch (error) {
-        console.error("❌ Could not download product image:", error.message);
-        console.log("   Continuing WITHOUT product image...");
+        if (!productResponse.ok) throw new Error(`HTTP ${productResponse.status}`);
+        productImageBuffer = Buffer.from(await productResponse.arrayBuffer());
+        const ct = productResponse.headers.get("content-type");
+        if (ct) productImageMimeType = ct.split(";")[0].trim();
+        console.log("✅ Product image downloaded:", productImageBuffer.length, "bytes");
+      } catch (err) {
+        console.error("❌ Could not download product image:", err.message);
+        console.log("   Will proceed with customer image only");
       }
     }
 
-    // Step 2: Get category prompt
-    const promptFunction = CATEGORY_PROMPTS[productCategory] || CATEGORY_PROMPTS.apparel;
-    const virtualTryOnPrompt = promptFunction(productName);
-    console.log(`📝 Using ${productCategory} prompt (${virtualTryOnPrompt.length} chars)`);
+    // Step 3: Build FormData for OpenAI /v1/images/edits
+    // Image order: first = @Image1 (customer), second = @Image2 (product)
+    console.log("🎨 Step 3: Calling OpenAI gpt-image-2 /v1/images/edits...");
+    const form = new FormData();
+    form.append("model", "gpt-image-2");
+    form.append("quality", "medium");
+    form.append("prompt", promptText);
 
-    // Step 3: Get OAuth token + call Vertex AI via REST
-    console.log(`🎨 Step 3: Calling Vertex AI ${VERTEX_MODEL}...`);
-    const token = await getVertexToken();
+    // Customer photo → @Image1
+    const userExt = userImage.mimetype === "image/png" ? "png" : "jpeg";
+    form.append("image[]", userImage.buffer, {
+      filename: `customer_photo.${userExt}`,
+      contentType: userImage.mimetype,
+    });
 
-    const parts = [
-      { text: virtualTryOnPrompt },
-      { inlineData: { mimeType: userImageMimeType, data: userImageBase64 } },
-    ];
-
-    if (productImageBase64) {
-      parts.push({ inlineData: { mimeType: productImageMimeType, data: productImageBase64 } });
-      console.log("✅ Product image included in request");
+    // Product photo → @Image2
+    if (productImageBuffer) {
+      const prodExt = productImageMimeType.includes("png") ? "png" : "jpeg";
+      form.append("image[]", productImageBuffer, {
+        filename: `product_photo.${prodExt}`,
+        contentType: productImageMimeType,
+      });
+      console.log("✅ Product image included as @Image2");
     }
 
-    const endpoint = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${VERTEX_MODEL}:generateContent`;
-
     console.log("⏳ Generating image (15-30 seconds)...");
-    const apiRes = await fetch(endpoint, {
+    const apiRes = await fetch(OPENAI_ENDPOINT, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        ...form.getHeaders(),
       },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts }],
-        generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
-      }),
+      body: form,
     });
 
     if (!apiRes.ok) {
-      const errText = await apiRes.text();
-      throw new Error(`Vertex AI API error ${apiRes.status}: ${errText.substring(0, 300)}`);
+      const errData = await apiRes.json().catch(() => ({}));
+      throw new Error(`OpenAI API error ${apiRes.status}: ${errData.error?.message || apiRes.statusText}`);
     }
 
-    const response = await apiRes.json();
-    console.log("📥 Response received from Vertex AI");
+    const imageData = await apiRes.json();
+    console.log("📥 Response received from OpenAI");
 
-    // Step 4: Extract generated image
-    let generatedImageBuffer = null;
-    const candidates = response?.candidates?.[0]?.content?.parts || [];
-    for (const part of candidates) {
-      if (part.inlineData?.data) {
-        generatedImageBuffer = Buffer.from(part.inlineData.data, "base64");
-        console.log(`✅ Image extracted — ${generatedImageBuffer.length} bytes`);
-        break;
-      }
+    // Step 4: Extract base64 image
+    const generatedBase64 = imageData?.data?.[0]?.b64_json;
+    if (!generatedBase64) {
+      console.error("❌ No image in response:", JSON.stringify(imageData).substring(0, 400));
+      throw new Error("OpenAI did not return an image.");
     }
 
-    if (!generatedImageBuffer) {
-      console.error("❌ No image in response:", JSON.stringify(response).substring(0, 500));
-      throw new Error("Vertex AI did not return an image.");
-    }
+    const generatedImageBuffer = Buffer.from(generatedBase64, "base64");
+    console.log(`✅ Image extracted — ${generatedImageBuffer.length} bytes`);
 
-    // Step 5: Compress PNG → JPEG
-    console.log("🗜️  Compressing...");
+    // Step 5: Compress PNG → JPEG for faster delivery
+    console.log("🗜️  Compressing PNG → JPEG...");
     const compressedBuffer = await sharp(generatedImageBuffer)
-      .jpeg({ quality: 82, progressive: true, mozjpeg: true })
+      .jpeg({ quality: 85, progressive: true, mozjpeg: true })
       .toBuffer();
     console.log(`   ${generatedImageBuffer.length} → ${compressedBuffer.length} bytes (${Math.round((1 - compressedBuffer.length / generatedImageBuffer.length) * 100)}% smaller)`);
 
     // Step 6: Upload to S3
     console.log("📤 Step 6: Uploading to S3...");
     const s3Url = await uploadImageToS3(
-      { buffer: compressedBuffer, originalname: "vertex-tryon.jpg", mimetype: "image/jpeg" },
+      { buffer: compressedBuffer, originalname: "openai-tryon.jpg", mimetype: "image/jpeg" },
       productName
     );
     console.log("✅ Complete! Virtual try-on image ready");
     return { imageUrl: s3Url };
 
   } catch (error) {
-    console.error("❌ Vertex AI generation error:", error.message);
+    console.error("❌ OpenAI generation error:", error.message);
     try {
       const imageUrl = await uploadImageToS3(userImage, productName);
       return { imageUrl };
