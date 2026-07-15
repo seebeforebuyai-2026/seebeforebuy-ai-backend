@@ -2,13 +2,13 @@
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
-const FormData = require("form-data");
 const { PutObjectCommand } = require("@aws-sdk/client-s3");
 const { s3Client, bucketName } = require("../config/s3");
 const ShopModel = require("../models/dynamodb-shop");
 const UsageLogModel = require("../models/dynamodb-usage-log");
 const { v4: uuidv4 } = require("uuid");
 const sharp = require("sharp");
+// NOTE: Using native FormData + Blob (Node 18+), NOT the form-data npm package
 
 // Configure multer for image upload (memory storage)
 const upload = multer({
@@ -449,39 +449,28 @@ async function generateImageWithOpenAI(
       }
     }
 
-    // Step 3: Build FormData for OpenAI /v1/images/edits
-    // IMPORTANT: gpt-image-2 requires PNG images and field name "image" (not "image[]")
+    // Step 3: Build FormData using native FormData + Blob (required by OpenAI)
+    // Key rules: use image[] for multiple images, never set Content-Type manually
     console.log("🎨 Step 3: Calling OpenAI gpt-image-2 /v1/images/edits...");
 
-    // Convert user image to PNG (required by OpenAI edits endpoint)
+    // Convert user image to PNG (OpenAI edits endpoint only accepts PNG)
     console.log("🔄 Converting user image to PNG...");
-    const userImagePng = await sharp(userImage.buffer)
-      .png()
-      .toBuffer();
-    console.log(`✅ User image converted to PNG: ${userImagePng.length} bytes`);
+    const userImagePng = await sharp(userImage.buffer).png().toBuffer();
+    console.log(`✅ User image PNG: ${userImagePng.length} bytes`);
 
     const form = new FormData();
     form.append("model", "gpt-image-2");
     form.append("quality", "medium");
     form.append("prompt", promptText);
 
-    // Customer photo → first "image" field (maps to @Image1)
-    form.append("image", userImagePng, {
-      filename: "customer_photo.png",
-      contentType: "image/png",
-    });
+    // Customer photo → @Image1 using native Blob
+    form.append("image[]", new Blob([userImagePng], { type: "image/png" }), "customer_photo.png");
 
-    // Product photo → second "image" field (maps to @Image2)
+    // Product photo → @Image2 using native Blob
     if (productImageBuffer) {
-      // Convert product image to PNG too
-      const productImagePng = await sharp(productImageBuffer)
-        .png()
-        .toBuffer();
-      form.append("image", productImagePng, {
-        filename: "product_photo.png",
-        contentType: "image/png",
-      });
-      console.log(`✅ Product image converted to PNG and included as @Image2: ${productImagePng.length} bytes`);
+      const productImagePng = await sharp(productImageBuffer).png().toBuffer();
+      form.append("image[]", new Blob([productImagePng], { type: "image/png" }), "product_photo.png");
+      console.log(`✅ Product image PNG: ${productImagePng.length} bytes included as @Image2`);
     }
 
     console.log("⏳ Generating image (15-30 seconds)...");
@@ -489,7 +478,7 @@ async function generateImageWithOpenAI(
       method: "POST",
       headers: {
         Authorization: `Bearer ${OPENAI_API_KEY}`,
-        ...form.getHeaders(),
+        // Do NOT set Content-Type — fetch sets it automatically with correct boundary
       },
       body: form,
     });
