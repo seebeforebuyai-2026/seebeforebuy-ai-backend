@@ -61,13 +61,13 @@ router.post("/", upload.single("userImage"), async (req, res) => {
       });
     }
 
-    // Call Gemini API with both user image and product image
+    // Call OpenAI gpt-image-2 with user image + product image
     // Prefer per-request category from frontend, fall back to shop-level setting
     const productCategory =
       req.body.product_category || shop.product_category || "apparel";
     console.log(`🏷️  Product category: ${productCategory}`);
 
-    const aiResult = await generateImageWithGemini(
+    const aiResult = await generateImageWithOpenAI(
       userImage,
       product_name,
       product_image_url,
@@ -398,7 +398,7 @@ The accessory looks expensive and real, with fine material detail and lighting t
 STYLE: high-end luxury accessories advertisement quality — editorial, sharp, fully photorealistic. Preserve the customer photo's original framing and aspect ratio.`,
 };
 
-async function generateImageWithGemini(
+async function generateImageWithOpenAI(
   userImage,
   productName,
   productImageUrl,
