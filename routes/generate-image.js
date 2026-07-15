@@ -450,28 +450,38 @@ async function generateImageWithOpenAI(
     }
 
     // Step 3: Build FormData for OpenAI /v1/images/edits
-    // Image order: first = @Image1 (customer), second = @Image2 (product)
+    // IMPORTANT: gpt-image-2 requires PNG images and field name "image" (not "image[]")
     console.log("🎨 Step 3: Calling OpenAI gpt-image-2 /v1/images/edits...");
+
+    // Convert user image to PNG (required by OpenAI edits endpoint)
+    console.log("🔄 Converting user image to PNG...");
+    const userImagePng = await sharp(userImage.buffer)
+      .png()
+      .toBuffer();
+    console.log(`✅ User image converted to PNG: ${userImagePng.length} bytes`);
+
     const form = new FormData();
     form.append("model", "gpt-image-2");
     form.append("quality", "medium");
     form.append("prompt", promptText);
 
-    // Customer photo → @Image1
-    const userExt = userImage.mimetype === "image/png" ? "png" : "jpeg";
-    form.append("image[]", userImage.buffer, {
-      filename: `customer_photo.${userExt}`,
-      contentType: userImage.mimetype,
+    // Customer photo → first "image" field (maps to @Image1)
+    form.append("image", userImagePng, {
+      filename: "customer_photo.png",
+      contentType: "image/png",
     });
 
-    // Product photo → @Image2
+    // Product photo → second "image" field (maps to @Image2)
     if (productImageBuffer) {
-      const prodExt = productImageMimeType.includes("png") ? "png" : "jpeg";
-      form.append("image[]", productImageBuffer, {
-        filename: `product_photo.${prodExt}`,
-        contentType: productImageMimeType,
+      // Convert product image to PNG too
+      const productImagePng = await sharp(productImageBuffer)
+        .png()
+        .toBuffer();
+      form.append("image", productImagePng, {
+        filename: "product_photo.png",
+        contentType: "image/png",
       });
-      console.log("✅ Product image included as @Image2");
+      console.log(`✅ Product image converted to PNG and included as @Image2: ${productImagePng.length} bytes`);
     }
 
     console.log("⏳ Generating image (15-30 seconds)...");
