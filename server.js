@@ -125,8 +125,6 @@ console.log('✅ DynamoDB initialized');
 // Routes define your API endpoints
 // Each route file handles a specific feature
 
-const paymentRoute = require('./routes/payment');
-app.use('/api/payment', paymentRoute);
 
 
 const generateImageRoute = require('./routes/generate-image');
