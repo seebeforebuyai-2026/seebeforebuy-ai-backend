@@ -125,6 +125,10 @@ console.log('✅ DynamoDB initialized');
 // Routes define your API endpoints
 // Each route file handles a specific feature
 
+const paymentRoute = require('./routes/payment');
+app.use('/api/payment', paymentRoute);
+
+
 const generateImageRoute = require('./routes/generate-image');
 console.log('✅ Generate image route loaded');
 
@@ -154,6 +158,9 @@ console.log('✅ GDPR webhooks route loaded');
 
 const downloadImageRoute = require('./routes/download-image');
 console.log('✅ Download image route loaded');
+
+const merchantAuthRoute = require('./routes/merchant-auth');
+console.log('✅ Merchant auth route loaded');
 
 // ============================================
 // 6. REGISTER ROUTES
@@ -195,6 +202,10 @@ console.log('✅ Route registered: POST /webhooks/shop/redact');
 
 app.use('/api/download-image', downloadImageRoute);
 console.log('✅ Route registered: GET /api/download-image');
+
+app.use('/api/merchant/auth', merchantAuthRoute);
+console.log('✅ Route registered: POST /api/merchant/auth/login');
+console.log('✅ Route registered: POST /api/merchant/auth/change-password');
 
 // ============================================
 // 7. HEALTH CHECK ENDPOINT

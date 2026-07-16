@@ -424,7 +424,7 @@ async function generateImageWithOpenAI(
     console.log(`│ 🔍 AI REQUEST DETAILS`);
     console.log(`│ Shop     : ${productName}`);
     console.log(`│ Category : ${productCategory}`);
-    console.log(`│ Model    : gpt-image-2 (medium quality)`);
+    console.log(`│ Model    : gpt-image-2 (low quality)`);
     console.log(`│ Endpoint : ${OPENAI_ENDPOINT}`);
     console.log(`│ Prompt preview (first 300 chars):`);
     console.log(`│ ${promptText.substring(0, 300).replace(/\n/g, "\n│ ")}`);
@@ -460,7 +460,7 @@ async function generateImageWithOpenAI(
 
     const form = new FormData();
     form.append("model", "gpt-image-2");
-    form.append("quality", "medium");
+    form.append("quality", "low");
     form.append("prompt", promptText);
 
     // Customer photo → @Image1 using native Blob
