@@ -40,25 +40,36 @@ class UsageLogModel {
   }
 
   // Get logs for a shop
-  static async findByShop(shop_domain, limit = 100) {
+  static async findByShop(shop_domain, limit = 1000) {
+    // First try GSI query (faster), fall back to Scan if GSI doesn't exist
     try {
       const result = await docClient.send(new QueryCommand({
         TableName: TABLES.USAGE_LOGS,
-        IndexName: 'shop_domain-created_at-index', // Requires GSI
+        IndexName: 'shop_domain-created_at-index',
         KeyConditionExpression: 'shop_domain = :domain',
-        ExpressionAttributeValues: {
-          ':domain': shop_domain,
-        },
-        ScanIndexForward: false, // Sort descending (newest first)
+        ExpressionAttributeValues: { ':domain': shop_domain },
+        ScanIndexForward: false,
         Limit: limit,
       }));
-
       return result.Items || [];
-
-    } catch (error) {
-      console.error('❌ Error finding logs:', error);
-      // If GSI doesn't exist, return empty array
-      return [];
+    } catch (gsiError) {
+      // GSI doesn't exist — fall back to full Scan filtered by shop_domain
+      console.warn(`⚠️  GSI not found for usage logs, using Scan fallback: ${gsiError.message}`);
+      try {
+        const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+        const result = await docClient.send(new ScanCommand({
+          TableName: TABLES.USAGE_LOGS,
+          FilterExpression: 'shop_domain = :domain',
+          ExpressionAttributeValues: { ':domain': shop_domain },
+        }));
+        const items = result.Items || [];
+        // Sort by created_at descending, limit
+        items.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+        return items.slice(0, limit);
+      } catch (scanError) {
+        console.error('❌ Error finding usage logs (scan fallback):', scanError.message);
+        return [];
+      }
     }
   }
 

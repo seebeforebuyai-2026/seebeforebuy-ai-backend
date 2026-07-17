@@ -58,24 +58,34 @@ class OrderModel {
   }
 
   // Get orders for a shop
-  static async findByShop(shop_domain, limit = 100) {
+  static async findByShop(shop_domain, limit = 1000) {
+    // First try GSI query, fall back to Scan if GSI doesn't exist
     try {
       const result = await docClient.send(new QueryCommand({
         TableName: ORDERS_TABLE,
         IndexName: 'shop_domain-created_at-index',
         KeyConditionExpression: 'shop_domain = :domain',
-        ExpressionAttributeValues: {
-          ':domain': shop_domain,
-        },
-        ScanIndexForward: false, // Sort descending (newest first)
+        ExpressionAttributeValues: { ':domain': shop_domain },
+        ScanIndexForward: false,
         Limit: limit,
       }));
-
       return result.Items || [];
-
-    } catch (error) {
-      console.error('❌ Error finding orders:', error);
-      return [];
+    } catch (gsiError) {
+      console.warn(`⚠️  GSI not found for orders, using Scan fallback: ${gsiError.message}`);
+      try {
+        const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+        const result = await docClient.send(new ScanCommand({
+          TableName: ORDERS_TABLE,
+          FilterExpression: 'shop_domain = :domain',
+          ExpressionAttributeValues: { ':domain': shop_domain },
+        }));
+        const items = result.Items || [];
+        items.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+        return items.slice(0, limit);
+      } catch (scanError) {
+        console.error('❌ Error finding orders (scan fallback):', scanError.message);
+        return [];
+      }
     }
   }
 
