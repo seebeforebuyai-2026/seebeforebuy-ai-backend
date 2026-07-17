@@ -146,9 +146,15 @@ router.get('/:shop_domain/predicted-impact', async (req, res) => {
     }
 
     // Predicted impact formulas
-    const appOrders    = Math.round(totalOrders24h * 0.08);
+    // Fix: when orders are low (e.g. 1), Math.round(1 * 0.08) = 0 which cascades.
+    // Use revenue-based approach for unique_users when orders round to 0.
     const appRevenue   = parseFloat((totalRevenue24h * 0.08).toFixed(2));
-    const uniqueUsers  = appOrders > 0 ? Math.round(appOrders / 0.02) : 0;
+    const avgBasket    = totalOrders24h > 0 ? totalRevenue24h / totalOrders24h : 1000;
+    // Implied app orders from revenue (revenue / avg basket × 8%)
+    const impliedAppOrders = appRevenue / avgBasket;
+    const appOrders    = Math.round(totalOrders24h * 0.08) || 0;
+    // Unique users = implied app orders / 2% conversion
+    const uniqueUsers  = impliedAppOrders > 0 ? Math.round(impliedAppOrders / 0.02) : 0;
     const tryOns       = Math.round(uniqueUsers * 1.7);
     const revPerTry    = tryOns > 0 ? parseFloat((appRevenue / tryOns).toFixed(2)) : 0;
 
