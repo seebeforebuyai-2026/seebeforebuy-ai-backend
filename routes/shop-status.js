@@ -117,6 +117,50 @@ router.get('/:shop_domain', async (req, res) => {
   }
 });
 
+// ── GET /api/shop-status/:shop_domain/predicted-impact ────────────────────────
+// Returns last-24h order totals + predicted impact metrics
+router.get('/:shop_domain/predicted-impact', async (req, res) => {
+  try {
+    const { shop_domain } = req.params;
+
+    // Get all synced orders for this shop
+    const allOrders = await OrderModel.findByShop(shop_domain, 1000);
+
+    // Filter to last 24 hours
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const last24hOrders = allOrders.filter(o => o.created_at >= since);
+
+    const totalOrders24h = last24hOrders.length;
+    const totalRevenue24h = last24hOrders.reduce((sum, o) => sum + (o.total_price || 0), 0);
+
+    // Predicted impact formulas
+    const appOrders     = Math.round(totalOrders24h * 0.08);               // 8% of store orders
+    const appRevenue    = parseFloat((totalRevenue24h * 0.08).toFixed(2));  // 8% of store revenue
+    const uniqueUsers   = appOrders > 0 ? Math.round(appOrders / 0.02) : 0; // Orders / 2%
+    const tryOns        = Math.round(uniqueUsers * 1.7);                    // Unique users × 1.7
+    const revenuePerTry = tryOns > 0 ? parseFloat((appRevenue / tryOns).toFixed(2)) : 0;
+
+    res.json({
+      success: true,
+      store_last_24h: {
+        total_orders: totalOrders24h,
+        total_revenue: parseFloat(totalRevenue24h.toFixed(2)),
+      },
+      predicted: {
+        orders_via_app:      appOrders,
+        revenue_via_app:     appRevenue,
+        unique_users:        uniqueUsers,
+        try_ons_generated:   tryOns,
+        revenue_per_try_on:  revenuePerTry,
+      },
+    });
+
+  } catch (error) {
+    console.error('❌ Predicted impact error:', error);
+    res.status(500).json({ error: 'Failed to calculate predicted impact', message: error.message });
+  }
+});
+
 // Update shop plan (called from external website after payment)
 router.post('/upgrade-plan', async (req, res) => {
   try {
