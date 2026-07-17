@@ -145,14 +145,18 @@ router.get('/:shop_domain/predicted-impact', async (req, res) => {
       console.log(`📊 Using order_sync estimate: ${totalOrders24h} orders/day from ${syncedTotal} total`);
     }
 
-    // Predicted impact formulas — realistic integer-only attribution
-    // Rule: if 8% of store orders < 0.5, app gets 0 credit (not realistic to claim partial orders)
-    const appOrders   = Math.round(totalOrders24h * 0.08);  // e.g. 20 orders → 1.6 → 2; 10 → 0.8 → 1; 1 → 0 → 0
-    const avgBasket   = totalOrders24h > 0 ? totalRevenue24h / totalOrders24h : 0;
-    const appRevenue  = parseFloat((appOrders * avgBasket).toFixed(2)); // exact revenue of those specific orders
-    const uniqueUsers = appOrders > 0 ? Math.round(appOrders / 0.02) : 0;
-    const tryOns      = Math.round(uniqueUsers * 1.7);
-    const revPerTry   = tryOns > 0 ? parseFloat((appRevenue / tryOns).toFixed(2)) : 0;
+    // Predicted impact formulas — pick real orders from the list
+    // Rule: 8% of store orders rounded to integer → pick that many real orders → sum their revenue
+    const appOrders = Math.round(totalOrders24h * 0.08);
+
+    // Pick the top `appOrders` orders by revenue (descending) and sum their actual revenue
+    const sortedOrders = [...last24hOrders].sort((a, b) => (b.total_price || 0) - (a.total_price || 0));
+    const pickedOrders = sortedOrders.slice(0, appOrders);
+    const appRevenue   = parseFloat(pickedOrders.reduce((sum, o) => sum + (o.total_price || 0), 0).toFixed(2));
+
+    const uniqueUsers  = appOrders > 0 ? Math.round(appOrders / 0.02) : 0;
+    const tryOns       = Math.round(uniqueUsers * 1.7);
+    const revPerTry    = tryOns > 0 ? parseFloat((appRevenue / tryOns).toFixed(2)) : 0;
 
     res.json({
       success: true,
