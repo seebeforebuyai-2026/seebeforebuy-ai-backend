@@ -158,21 +158,38 @@ router.get('/:shop_domain/predicted-impact', async (req, res) => {
       dataSource = 'estimate';
     }
 
-    // ── Step 2: Fallback — use order_sync daily average if Shopify call failed ─
+    // ── Step 2: Fallback — estimate from available shop data ─────────────────
     if (dataSource === 'estimate' || totalOrders24h === 0) {
-      const syncedTotal = shop.order_sync?.total_orders_synced || 0;
+      const syncedTotal    = shop.order_sync?.total_orders_synced || 0;
+      const imagesUsed     = shop.images_used || 0;
+
       if (syncedTotal > 0) {
-        // Estimate daily from total synced orders / days since first sync
-        const firstSyncDate = shop.order_sync?.last_sync_time
-          ? new Date(shop.created_at)
-          : new Date();
-        const daysSinceFirst = Math.max(1, Math.ceil((Date.now() - firstSyncDate.getTime()) / (1000 * 60 * 60 * 24)));
-        totalOrders24h = Math.round(syncedTotal / daysSinceFirst);
-        // Estimate revenue from average order value stored in sync data
-        const avgOrderValue = shop.order_sync?.avg_order_value || 1000;
-        totalRevenue24h = totalOrders24h * avgOrderValue;
-        console.log(`📊 Estimate: ${totalOrders24h} orders/day (${syncedTotal} total over ${daysSinceFirst} days)`);
+        // Daily average = total synced orders / days since install
+        const installDate   = new Date(shop.created_at);
+        const daysSinceInstall = Math.max(1, Math.ceil((Date.now() - installDate.getTime()) / (1000 * 60 * 60 * 24)));
+        totalOrders24h  = Math.max(1, Math.round(syncedTotal / daysSinceInstall));
+        // Estimate avg order value: if order_sync has revenue use it, else default ₹1000
+        const totalSyncRevenue = shop.order_sync?.total_revenue || (syncedTotal * 1000);
+        totalRevenue24h = totalOrders24h * (totalSyncRevenue / Math.max(1, syncedTotal));
+        console.log(`📊 Estimate from order_sync: ${totalOrders24h} orders/day (${syncedTotal} total, ${daysSinceInstall} days)`);
+      } else if (imagesUsed > 0) {
+        // Fallback: use try-on usage as proxy — assume 1 try-on ≈ 10 store visitors, 2% conversion
+        // So store orders ≈ imagesUsed * 0.5 per day (rough estimate based on usage days)
+        const installDate   = new Date(shop.created_at);
+        const daysSinceInstall = Math.max(1, Math.ceil((Date.now() - installDate.getTime()) / (1000 * 60 * 60 * 24)));
+        const dailyTryOns   = Math.max(1, Math.round(imagesUsed / daysSinceInstall));
+        // Store orders ≈ try-ons / 0.08 (if 8% of store orders generate try-ons)
+        totalOrders24h  = Math.max(10, Math.round(dailyTryOns / 0.08));
+        totalRevenue24h = totalOrders24h * 800; // default ₹800 avg order value
+        console.log(`📊 Estimate from images_used: ${totalOrders24h} orders/day (${imagesUsed} total try-ons)`);
+      } else {
+        // No data at all — use a conservative default so numbers aren't all zero
+        // Assumes a small store with 20 orders/day as baseline
+        totalOrders24h  = 20;
+        totalRevenue24h = 20000; // ₹1000 avg order value
+        console.log(`📊 Using default estimate: 20 orders/day (no sync data available)`);
       }
+      dataSource = 'estimate';
     }
 
     // ── Step 3: Calculate DAILY predicted impact (today = day 1) ─────────────
