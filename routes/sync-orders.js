@@ -47,9 +47,6 @@ router.post('/', async (req, res) => {
       // Determine sync strategy
       const lastSyncTime = shop.order_sync?.last_synced_order_created_at;
       const isFirstSync = !lastSyncTime;
-      // Determine sync strategy
-      const lastSyncTime = shop.order_sync?.last_synced_order_created_at;
-      const isFirstSync = !lastSyncTime;
       const syncStartDate = isFirstSync ? shop.created_at : lastSyncTime;
 
       console.log('   First sync:', isFirstSync, '| From:', syncStartDate);

@@ -103,7 +103,7 @@ async function sendWelcomeEmail(toEmail, shopName, temporaryPassword) {
       <h3>📋 Your Login Credentials</h3>
       <p><strong>Email:</strong> ${toEmail}</p>
       <p><strong>Temporary Password:</strong> <code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">${temporaryPassword}</code></p>
-      <p><strong>Login URL:</strong> <a href="https://seebeforebuy.com/login">https://seebeforebuy.com/login</a></p>
+      <p><strong>Login URL:</strong> <a href="https://dashboard.seebeforebuy.in/">https://dashboard.seebeforebuy.in/</a></p>
       <p style="color: #666; font-size: 14px; margin-top: 15px;">
         ⚠️ Please change your password after first login for security.
       </p>
@@ -126,7 +126,7 @@ async function sendWelcomeEmail(toEmail, shopName, temporaryPassword) {
     
     <p>Need more images? Upgrade anytime from your dashboard!</p>
     
-    <a href="https://seebeforebuy.com/login" class="button">Login to Dashboard</a>
+    <a href="https://dashboard.seebeforebuy.in/" class="button">Login to Dashboard</a>
     
     <p>If you have any questions, reply to this email or contact us at <a href="mailto:support@seebeforebuy.com">support@seebeforebuy.com</a></p>
     
@@ -151,7 +151,7 @@ Thank you for installing See Before Buy AI! Your account has been created succes
 Your Login Credentials:
 Email: ${toEmail}
 Temporary Password: ${temporaryPassword}
-Login URL: https://seebeforebuy.com/login
+Login URL: https://dashboard.seebeforebuy.in/
 
 ⚠️ Please change your password after first login for security.
 
