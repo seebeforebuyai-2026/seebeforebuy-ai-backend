@@ -118,58 +118,112 @@ router.get('/:shop_domain', async (req, res) => {
 });
 
 // ── GET /api/shop-status/:shop_domain/predicted-impact ────────────────────────
+// Fetches real last-24h orders from Shopify directly + calculates cumulative predicted metrics
 router.get('/:shop_domain/predicted-impact', async (req, res) => {
   try {
     const { shop_domain } = req.params;
-
     const shop = await ShopModel.findOne(shop_domain);
     if (!shop) return res.status(404).json({ error: 'Shop not found' });
 
-    // Try orders table first; if empty, use order_sync totals from shop record
-    const allOrders = await OrderModel.findByShop(shop_domain, 1000);
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const last24hOrders = allOrders.filter(o => o.created_at >= since);
+    // ── Step 1: Get last-24h store orders from Shopify directly ──────────────
+    // We use the shop's stored access token from the Shopify session
+    let totalOrders24h = 0;
+    let totalRevenue24h = 0;
+    let dataSource = 'shopify';
 
-    let totalOrders24h = last24hOrders.length;
-    let totalRevenue24h = last24hOrders.reduce((sum, o) => sum + (o.total_price || 0), 0);
+    const accessToken = shop.access_token;
+    if (accessToken) {
+      try {
+        const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const ordersUrl = `https://${shop_domain}/admin/api/2024-01/orders.json?status=any&created_at_min=${encodeURIComponent(since24h)}&limit=250&fields=id,total_price,created_at`;
 
-    // If orders table has no data for last 24h, use cumulative order_sync stats
-    // and estimate: assume ~3% of total orders happened in the last 24h
-    const syncedTotal = shop.order_sync?.total_orders_synced || 0;
-    const syncedRevenue = shop.order_sync?.total_revenue || 0;
+        const shopifyRes = await fetch(ordersUrl, {
+          headers: { 'X-Shopify-Access-Token': accessToken },
+        });
 
-    if (totalOrders24h === 0 && syncedTotal > 0) {
-      // Estimate last 24h as 1/30 of monthly total (rough daily average)
-      totalOrders24h = Math.max(1, Math.round(syncedTotal / 30));
-      totalRevenue24h = syncedRevenue / 30;
-      console.log(`📊 Using order_sync estimate: ${totalOrders24h} orders/day from ${syncedTotal} total`);
+        if (shopifyRes.ok) {
+          const shopifyData = await shopifyRes.json();
+          const orders = shopifyData.orders || [];
+          totalOrders24h = orders.length;
+          totalRevenue24h = orders.reduce((sum, o) => sum + parseFloat(o.total_price || 0), 0);
+          console.log(`📦 Shopify last 24h: ${totalOrders24h} orders, ₹${totalRevenue24h.toFixed(2)} revenue`);
+        } else {
+          throw new Error(`Shopify API ${shopifyRes.status}`);
+        }
+      } catch (shopifyErr) {
+        console.warn(`⚠️  Shopify fetch failed, using order_sync estimate: ${shopifyErr.message}`);
+        dataSource = 'estimate';
+      }
+    } else {
+      dataSource = 'estimate';
     }
 
-    // Predicted impact formulas — pick real orders from the list
-    // Rule: 8% of store orders rounded to integer → pick that many real orders → sum their revenue
-    const appOrders = Math.round(totalOrders24h * 0.08);
+    // ── Step 2: Fallback — use order_sync daily average if Shopify call failed ─
+    if (dataSource === 'estimate' || totalOrders24h === 0) {
+      const syncedTotal = shop.order_sync?.total_orders_synced || 0;
+      if (syncedTotal > 0) {
+        // Estimate daily from total synced orders / days since first sync
+        const firstSyncDate = shop.order_sync?.last_sync_time
+          ? new Date(shop.created_at)
+          : new Date();
+        const daysSinceFirst = Math.max(1, Math.ceil((Date.now() - firstSyncDate.getTime()) / (1000 * 60 * 60 * 24)));
+        totalOrders24h = Math.round(syncedTotal / daysSinceFirst);
+        // Estimate revenue from average order value stored in sync data
+        const avgOrderValue = shop.order_sync?.avg_order_value || 1000;
+        totalRevenue24h = totalOrders24h * avgOrderValue;
+        console.log(`📊 Estimate: ${totalOrders24h} orders/day (${syncedTotal} total over ${daysSinceFirst} days)`);
+      }
+    }
 
-    // Pick the top `appOrders` orders by revenue (descending) and sum their actual revenue
-    const sortedOrders = [...last24hOrders].sort((a, b) => (b.total_price || 0) - (a.total_price || 0));
-    const pickedOrders = sortedOrders.slice(0, appOrders);
-    const appRevenue   = parseFloat(pickedOrders.reduce((sum, o) => sum + (o.total_price || 0), 0).toFixed(2));
+    // ── Step 3: Calculate DAILY predicted impact (today = day 1) ─────────────
+    const daily_app_orders = Math.round(totalOrders24h * 0.08);
+    const avg_order_value  = totalOrders24h > 0 ? totalRevenue24h / totalOrders24h : 0;
+    const daily_app_revenue = parseFloat((daily_app_orders * avg_order_value).toFixed(2));
+    const daily_unique_users = daily_app_orders > 0 ? Math.round(daily_app_orders / 0.02) : 0;
+    const daily_try_ons      = Math.round(daily_unique_users * 1.7);
+    const daily_rev_per_try  = daily_try_ons > 0 ? parseFloat((daily_app_revenue / daily_try_ons).toFixed(2)) : 0;
 
-    const uniqueUsers  = appOrders > 0 ? Math.round(appOrders / 0.02) : 0;
-    const tryOns       = Math.round(uniqueUsers * 1.7);
-    const revPerTry    = tryOns > 0 ? parseFloat((appRevenue / tryOns).toFixed(2)) : 0;
+    // ── Step 4: Calculate CUMULATIVE (days since install × daily) ─────────────
+    // "Day N" shows what the merchant has accumulated since installing the app
+    const installDate  = new Date(shop.created_at);
+    const daysSince    = Math.max(1, Math.ceil((Date.now() - installDate.getTime()) / (1000 * 60 * 60 * 24)));
+    // Cap at 30 days (reset monthly) — cumulative resets every 30 days
+    const cumDays      = ((daysSince - 1) % 30) + 1;
+
+    const cum_app_orders  = daily_app_orders * cumDays;
+    const cum_app_revenue = parseFloat((daily_app_revenue * cumDays).toFixed(2));
+    const cum_unique_users = daily_unique_users * cumDays;
+    const cum_try_ons     = daily_try_ons * cumDays;
+    const cum_rev_per_try = cum_try_ons > 0 ? parseFloat((cum_app_revenue / cum_try_ons).toFixed(2)) : 0;
+
+    console.log(`📊 Predicted impact — Day ${cumDays}/30 since install`);
+    console.log(`   Daily: ${daily_app_orders} orders, ₹${daily_app_revenue}`);
+    console.log(`   Cumulative: ${cum_app_orders} orders, ₹${cum_app_revenue}`);
 
     res.json({
       success: true,
       store_last_24h: {
         total_orders: totalOrders24h,
         total_revenue: parseFloat(totalRevenue24h.toFixed(2)),
+        data_source: dataSource,
       },
+      days_since_install: daysSince,
+      cycle_day: cumDays,
+      // Daily = what app drives on ONE typical day
+      daily: {
+        orders_via_app:     daily_app_orders,
+        revenue_via_app:    daily_app_revenue,
+        unique_users:       daily_unique_users,
+        try_ons_generated:  daily_try_ons,
+        revenue_per_try_on: daily_rev_per_try,
+      },
+      // Predicted = cumulative since install (grows daily, resets at 30)
       predicted: {
-        orders_via_app:     appOrders,
-        revenue_via_app:    appRevenue,
-        unique_users:       uniqueUsers,
-        try_ons_generated:  tryOns,
-        revenue_per_try_on: revPerTry,
+        orders_via_app:     cum_app_orders,
+        revenue_via_app:    cum_app_revenue,
+        unique_users:       cum_unique_users,
+        try_ons_generated:  cum_try_ons,
+        revenue_per_try_on: cum_rev_per_try,
       },
     });
 

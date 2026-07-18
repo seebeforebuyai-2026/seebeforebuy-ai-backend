@@ -47,31 +47,40 @@ router.post('/', async (req, res) => {
       // Determine sync strategy
       const lastSyncTime = shop.order_sync?.last_synced_order_created_at;
       const isFirstSync = !lastSyncTime;
-      
-      // For first sync, use app install date (shop created_at)
-      // This prevents fetching old orders before app was installed
+      // Determine sync strategy
+      const lastSyncTime = shop.order_sync?.last_synced_order_created_at;
+      const isFirstSync = !lastSyncTime;
       const syncStartDate = isFirstSync ? shop.created_at : lastSyncTime;
 
-      console.log('   First sync:', isFirstSync);
-      if (isFirstSync) {
-        console.log('   Syncing from app install date:', syncStartDate);
-      } else {
-        console.log('   Syncing from last order date:', syncStartDate);
-      }
+      console.log('   First sync:', isFirstSync, '| From:', syncStartDate);
 
-      // Fetch orders from Shopify (only orders after syncStartDate)
       const fetchOptions = {
         limit: 250,
-        created_at_min: syncStartDate, // Always filter by date
+        created_at_min: syncStartDate,
       };
 
+      // Save access_token to shop record so predicted-impact can call Shopify directly
+      if (session.accessToken && !shop.access_token) {
+        const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+        const { docClient, TABLES } = require('../config/dynamodb');
+        await docClient.send(new UpdateCommand({
+          TableName: TABLES.SHOPS,
+          Key: { shop_domain },
+          UpdateExpression: 'SET access_token = :token, updated_at = :now',
+          ExpressionAttributeValues: { ':token': session.accessToken, ':now': new Date().toISOString() },
+        }));
+        console.log('   ✅ Access token saved to shop record');
+      }
+
+      // Fetch ALL orders from Shopify (not just SBB-filtered)
+      // We store all orders so predicted-impact can use real store volume as baseline
       const allOrders = await ShopifyAPIService.fetchOrders(session, fetchOptions);
 
-      // Filter orders with SBB items
+      // Separate SBB orders from all orders for tracking
       const sbbOrders = ShopifyAPIService.filterSBBOrders(allOrders);
 
-      if (sbbOrders.length === 0) {
-        console.log('   ℹ️  No new orders with SBB items');
+      if (allOrders.length === 0) {
+        console.log('   ℹ️  No new orders found');
         
         // Update sync time even if no new orders
         const syncData = {
@@ -91,19 +100,19 @@ router.post('/', async (req, res) => {
       }
 
       // Sort orders by created_at (newest first)
-      sbbOrders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      allOrders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-      // Store orders (skip duplicates)
+      // Store ALL orders (has_sbb_items = true/false based on whether SBB was used)
       let newOrdersCount = 0;
       let duplicatesSkipped = 0;
       let totalRevenue = 0;
+      const sbbOrderIds = new Set(sbbOrders.map(o => o.id.toString()));
 
-      for (const order of sbbOrders) {
+      for (const order of allOrders) {
         try {
-          // Extract session IDs
-          const sessionIds = ShopifyAPIService.extractSessionIds(order);
+          const isSBB = sbbOrderIds.has(order.id.toString());
+          const sessionIds = isSBB ? ShopifyAPIService.extractSessionIds(order) : [];
 
-          // Create order
           const created = await OrderModel.create({
             order_id: order.id,
             shop_domain: shop_domain,
@@ -118,7 +127,7 @@ router.post('/', async (req, res) => {
               quantity: item.quantity,
               price: item.price,
             })),
-            has_sbb_items: true,
+            has_sbb_items: isSBB,
             sbb_session_ids: sessionIds,
             created_at: order.created_at,
           });
@@ -132,17 +141,16 @@ router.post('/', async (req, res) => {
 
         } catch (error) {
           console.error(`❌ Error storing order ${order.id}:`, error);
-          // Continue with next order
         }
       }
 
       console.log(`✅ Sync complete:`);
-      console.log(`   New orders: ${newOrdersCount}`);
+      console.log(`   Total orders stored: ${newOrdersCount} (${sbbOrders.length} with SBB items)`);
       console.log(`   Duplicates skipped: ${duplicatesSkipped}`);
-      console.log(`   Total revenue: $${totalRevenue.toFixed(2)}`);
+      console.log(`   Total revenue: ₹${totalRevenue.toFixed(2)}`);
 
-      // Update sync tracking
-      const latestOrder = sbbOrders[0]; // Newest order
+      // Update sync tracking — use newest order from ALL orders
+      const latestOrder = allOrders[0];
       const currentTotal = (shop.order_sync?.total_orders_synced || 0) + newOrdersCount;
 
       const syncData = {
