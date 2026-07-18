@@ -218,74 +218,77 @@ router.get('/:shop_domain/predicted-impact', async (req, res) => {
     const shop = await ShopModel.findOne(shop_domain);
     if (!shop) return res.status(404).json({ error: 'Shop not found' });
 
-    // ── Step 1: Use stored orders_snapshot (set by fetch-orders-snapshot) ────
+    // ── Step 1: Auto-fetch last 24h from Shopify if access_token available ───
     let totalOrders24h = 0;
     let totalRevenue24h = 0;
-    let dataSource = 'snapshot';
+    let dataSource = 'estimate';
 
-    const snap = shop.orders_snapshot;
-    if (snap && snap.daily_orders > 0) {
-      totalOrders24h  = snap.daily_orders;   // already a daily average
-      totalRevenue24h = snap.daily_revenue;
-      console.log(`📊 Using snapshot: ${totalOrders24h.toFixed(1)} orders/day, ₹${totalRevenue24h.toFixed(0)}/day`);
-    } else {
-      // ── Step 2: Try Shopify directly if access_token available ─────────────
-      const accessToken = shop.access_token;
-      if (accessToken) {
-        try {
-          const since24h  = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-          const url       = `https://${shop_domain}/admin/api/2024-01/orders.json?status=any&created_at_min=${encodeURIComponent(since24h)}&limit=250&fields=id,total_price`;
-          const r         = await fetch(url, { headers: { 'X-Shopify-Access-Token': accessToken } });
-          if (r.ok) {
-            const d     = await r.json();
-            const ords  = d.orders || [];
-            totalOrders24h  = ords.length;
-            totalRevenue24h = ords.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
-            dataSource = 'shopify_live';
-            console.log(`📦 Live Shopify: ${totalOrders24h} orders last 24h`);
-          } else { throw new Error(`${r.status}`); }
-        } catch (e) {
-          console.warn(`⚠️  Live Shopify failed: ${e.message}`);
-          dataSource = 'estimate';
-        }
-      } else {
-        dataSource = 'estimate';
-      }
-
-      // ── Step 3: Estimate from whatever data we have ──────────────────────
-      if ((dataSource === 'estimate' || totalOrders24h === 0) && totalOrders24h === 0) {
-        const syncedTotal = shop.order_sync?.total_orders_synced || 0;
-        const imagesUsed  = shop.images_used || 0;
-        const installDate = new Date(shop.created_at);
-        const daysSince   = Math.max(1, Math.ceil((Date.now() - installDate.getTime()) / (1000 * 60 * 60 * 24)));
-
-        if (syncedTotal > 0) {
-          totalOrders24h  = Math.max(1, syncedTotal / daysSince);
-          totalRevenue24h = totalOrders24h * 1000;
-        } else if (imagesUsed > 0) {
-          totalOrders24h  = Math.max(10, (imagesUsed / daysSince) / 0.08);
-          totalRevenue24h = totalOrders24h * 800;
+    const accessToken = shop.access_token;
+    if (accessToken) {
+      try {
+        const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const url = `https://${shop_domain}/admin/api/2024-01/orders.json?status=any&created_at_min=${encodeURIComponent(since24h)}&limit=250&fields=id,total_price`;
+        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': accessToken } });
+        if (r.ok) {
+          const d = await r.json();
+          const ords = d.orders || [];
+          totalOrders24h  = ords.length;
+          totalRevenue24h = ords.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
+          dataSource = 'shopify_live';
+          console.log(`📦 Live Shopify 24h: ${totalOrders24h} orders, ₹${totalRevenue24h.toFixed(0)}`);
         } else {
-          // Default — no data yet, use 20 orders/day
-          totalOrders24h  = 20;
-          totalRevenue24h = 20000;
+          throw new Error(`Shopify ${r.status}`);
         }
-        dataSource = 'estimate';
-        console.log(`📊 Estimate: ${totalOrders24h.toFixed(1)} orders/day`);
+      } catch (e) {
+        console.warn(`⚠️  Shopify live fetch failed: ${e.message}, trying snapshot`);
       }
     }
 
-    // ── Step 3: Calculate DAILY predicted impact ─────────────────────────────
-    // Use decimal for appOrdersRaw so revenue is accurate even with fractional orders
-    const appOrdersRaw      = totalOrders24h * 0.08;
-    const daily_app_orders  = Math.round(appOrdersRaw);
-    const avg_order_value   = totalOrders24h > 0 ? totalRevenue24h / totalOrders24h : 0;
-    // Revenue uses raw decimal so ₹0 doesn't happen when orders < 12.5
-    const daily_app_revenue  = parseFloat((appOrdersRaw * avg_order_value).toFixed(2));
-    // Unique users: use revenue-based when app orders < 1
-    const impliedOrders      = appOrdersRaw > 0 ? appOrdersRaw : 0;
-    const daily_unique_users = impliedOrders > 0 ? Math.round(impliedOrders / 0.02) : 0;
+    // ── Fallback: use stored orders_snapshot ──────────────────────────────────
+    if (dataSource === 'estimate' || totalOrders24h === 0) {
+      const snap = shop.orders_snapshot;
+      if (snap && snap.daily_orders > 0) {
+        totalOrders24h  = snap.daily_orders;
+        totalRevenue24h = snap.daily_revenue;
+        dataSource = 'snapshot';
+        console.log(`📊 Using snapshot: ${totalOrders24h} orders/day`);
+      }
+    }
+
+    // ── Fallback: estimate from sync data ─────────────────────────────────────
+    if (totalOrders24h === 0) {
+      const syncedTotal = shop.order_sync?.total_orders_synced || 0;
+      const imagesUsed  = shop.images_used || 0;
+      const installDate = new Date(shop.created_at);
+      const daysSince   = Math.max(1, Math.ceil((Date.now() - installDate.getTime()) / (1000 * 60 * 60 * 24)));
+      if (syncedTotal > 0) {
+        totalOrders24h  = Math.max(1, syncedTotal / daysSince);
+        totalRevenue24h = totalOrders24h * 1000;
+        dataSource = 'estimate';
+      } else if (imagesUsed > 0) {
+        totalOrders24h  = Math.max(10, (imagesUsed / daysSince) / 0.08);
+        totalRevenue24h = totalOrders24h * 800;
+        dataSource = 'estimate';
+      } else {
+        totalOrders24h  = 20;
+        totalRevenue24h = 20000;
+        dataSource = 'estimate';
+      }
+      console.log(`📊 Estimate: ${totalOrders24h.toFixed(1)} orders/day (${dataSource})`);
+    }
+
+    // ── Step 3: STRICT formula — integer orders only ─────────────────────────
+    // If 8% of store orders rounds to 0, the app gets 0 credit (not enough orders)
+    // Orders: 10 → 0.8 → rounds to 1; less than that → 0 → all zeros
+    const daily_app_orders   = Math.round(totalOrders24h * 0.08);
+    const avg_order_value    = totalOrders24h > 0 ? totalRevenue24h / totalOrders24h : 0;
+    // Revenue = actual revenue of those specific orders (avg × app orders)
+    const daily_app_revenue  = parseFloat((daily_app_orders * avg_order_value).toFixed(2));
+    // Unique Users = App Orders / 2% (EXACTLY as specified)
+    const daily_unique_users = daily_app_orders > 0 ? Math.round(daily_app_orders / 0.02) : 0;
+    // Try-ons = Unique Users × 1.7 (EXACTLY as specified)
     const daily_try_ons      = Math.round(daily_unique_users * 1.7);
+    // Revenue per Try-on = Total Revenue / Try-ons Generated (EXACTLY as specified)
     const daily_rev_per_try  = daily_try_ons > 0 ? parseFloat((daily_app_revenue / daily_try_ons).toFixed(2)) : 0;
 
     // ── Step 4: Calculate CUMULATIVE (days since install × daily) ─────────────
