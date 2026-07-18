@@ -118,58 +118,42 @@ router.get('/:shop_domain', async (req, res) => {
 });
 
 // ── POST /api/shop-status/:shop_domain/fetch-orders-snapshot ─────────────────
-// Fetches ALL store orders from Shopify for the period since last fetch (or last 30 days)
-// Stores daily order count + revenue snapshot in the shop record
+// Triggers a recalculation of the orders snapshot from already-synced DynamoDB orders
+// (Direct Shopify calls require valid session tokens which only the Shopify app has)
 router.post('/:shop_domain/fetch-orders-snapshot', async (req, res) => {
   try {
     const { shop_domain } = req.params;
     const shop = await ShopModel.findOne(shop_domain);
     if (!shop) return res.status(404).json({ error: 'Shop not found' });
 
-    const accessToken = shop.access_token;
-    if (!accessToken) {
-      return res.status(400).json({
-        error: 'No access token. Please click "Sync Orders" in the Shopify app dashboard first.',
+    // Use orders already in DynamoDB (synced by Shopify app)
+    const allOrders = await OrderModel.findByShop(shop_domain, 1000);
+
+    if (allOrders.length === 0) {
+      return res.json({
+        success: false,
+        message: 'No orders found. Please click "Sync Orders" in the Shopify app dashboard first, then try again.',
+        total_orders: 0,
       });
     }
 
-    // Determine date range: from last snapshot fetch OR from install date (max 30 days back)
-    const lastFetch     = shop.orders_snapshot?.last_fetched_at;
+    // Calculate daily averages from all synced orders
     const installDate   = new Date(shop.created_at);
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const fromDate      = lastFetch
-      ? new Date(lastFetch)
-      : (installDate > thirtyDaysAgo ? installDate : thirtyDaysAgo);
-
-    console.log(`📦 Fetching ALL store orders from ${fromDate.toISOString()} for ${shop_domain}`);
-
-    const since = fromDate.toISOString();
-    const ordersUrl = `https://${shop_domain}/admin/api/2024-01/orders.json?status=any&created_at_min=${encodeURIComponent(since)}&limit=250&fields=id,total_price,created_at,financial_status`;
-
-    const shopifyRes = await fetch(ordersUrl, {
-      headers: { 'X-Shopify-Access-Token': accessToken },
-    });
-
-    if (!shopifyRes.ok) {
-      throw new Error(`Shopify API error: ${shopifyRes.status} ${shopifyRes.statusText}`);
-    }
-
-    const shopifyData = await shopifyRes.json();
-    const orders = shopifyData.orders || [];
-
-    // Count ALL orders and total revenue
-    const totalOrders  = orders.length;
-    const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total_price || 0), 0);
-
-    // Calculate daily averages
-    const daysCovered   = Math.max(1, Math.ceil((Date.now() - fromDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const daysCovered   = Math.max(1, Math.ceil((Date.now() - installDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const totalOrders   = allOrders.length;
+    const totalRevenue  = allOrders.reduce((s, o) => s + (o.total_price || 0), 0);
     const dailyOrders   = totalOrders / daysCovered;
     const dailyRevenue  = totalRevenue / daysCovered;
     const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
-    console.log(`✅ Fetched: ${totalOrders} orders over ${daysCovered} days (avg ${dailyOrders.toFixed(1)}/day)`);
+    // Also check last 24h specifically
+    const since24h   = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const orders24h  = allOrders.filter(o => (o.created_at || '') >= since24h);
+    const has24hData = orders24h.length > 0;
 
-    // Store snapshot in shop record
+    console.log(`📊 Snapshot from DB: ${totalOrders} orders, ${dailyOrders.toFixed(1)}/day, last 24h: ${orders24h.length}`);
+
+    // Store snapshot
     const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
     const { docClient, TABLES } = require('../config/dynamodb');
     await docClient.send(new UpdateCommand({
@@ -184,8 +168,9 @@ router.post('/:shop_domain/fetch-orders-snapshot', async (req, res) => {
           daily_revenue:   parseFloat(dailyRevenue.toFixed(2)),
           avg_order_value: parseFloat(avgOrderValue.toFixed(2)),
           days_covered:    daysCovered,
-          from_date:       since,
           last_fetched_at: new Date().toISOString(),
+          has_24h_data:    has24hData,
+          orders_24h:      orders24h.length,
         },
         ':now': new Date().toISOString(),
       },
@@ -193,20 +178,21 @@ router.post('/:shop_domain/fetch-orders-snapshot', async (req, res) => {
 
     res.json({
       success: true,
-      message: `Fetched ${totalOrders} orders over ${daysCovered} days`,
+      message: `Calculated from ${totalOrders} synced orders over ${daysCovered} days`,
       snapshot: {
-        total_orders:   totalOrders,
-        total_revenue:  parseFloat(totalRevenue.toFixed(2)),
-        daily_orders:   parseFloat(dailyOrders.toFixed(2)),
-        daily_revenue:  parseFloat(dailyRevenue.toFixed(2)),
+        total_orders:    totalOrders,
+        total_revenue:   parseFloat(totalRevenue.toFixed(2)),
+        daily_orders:    parseFloat(dailyOrders.toFixed(2)),
+        daily_revenue:   parseFloat(dailyRevenue.toFixed(2)),
         avg_order_value: parseFloat(avgOrderValue.toFixed(2)),
-        days_covered:   daysCovered,
+        days_covered:    daysCovered,
+        orders_last_24h: orders24h.length,
       },
     });
 
   } catch (error) {
     console.error('❌ Fetch orders snapshot error:', error);
-    res.status(500).json({ error: 'Failed to fetch orders', message: error.message });
+    res.status(500).json({ error: 'Failed to calculate snapshot', message: error.message });
   }
 });
 
@@ -218,44 +204,46 @@ router.get('/:shop_domain/predicted-impact', async (req, res) => {
     const shop = await ShopModel.findOne(shop_domain);
     if (!shop) return res.status(404).json({ error: 'Shop not found' });
 
-    // ── Step 1: Auto-fetch last 24h from Shopify if access_token available ───
+    // ── Step 1: Get orders from DynamoDB (synced via the Shopify app) ────────
+    // Direct Shopify calls from backend fail due to token scope issues.
+    // Orders are synced by the Shopify app which has valid session tokens.
     let totalOrders24h = 0;
     let totalRevenue24h = 0;
-    let dataSource = 'estimate';
+    let dataSource = 'db';
 
-    const accessToken = shop.access_token;
-    if (accessToken) {
-      try {
-        const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const url = `https://${shop_domain}/admin/api/2024-01/orders.json?status=any&created_at_min=${encodeURIComponent(since24h)}&limit=250&fields=id,total_price`;
-        const r = await fetch(url, { headers: { 'X-Shopify-Access-Token': accessToken } });
-        if (r.ok) {
-          const d = await r.json();
-          const ords = d.orders || [];
-          totalOrders24h  = ords.length;
-          totalRevenue24h = ords.reduce((s, o) => s + parseFloat(o.total_price || 0), 0);
-          dataSource = 'shopify_live';
-          console.log(`📦 Live Shopify 24h: ${totalOrders24h} orders, ₹${totalRevenue24h.toFixed(0)}`);
-        } else {
-          throw new Error(`Shopify ${r.status}`);
-        }
-      } catch (e) {
-        console.warn(`⚠️  Shopify live fetch failed: ${e.message}, trying snapshot`);
-      }
+    // Try last 24h from orders table (all orders, not just SBB)
+    const allOrders = await OrderModel.findByShop(shop_domain, 1000);
+    const since24h  = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const orders24h = allOrders.filter(o => (o.created_at || '') >= since24h);
+
+    if (orders24h.length > 0) {
+      totalOrders24h  = orders24h.length;
+      totalRevenue24h = orders24h.reduce((s, o) => s + (o.total_price || 0), 0);
+      dataSource = 'db_24h';
+      console.log(`📦 DB 24h: ${totalOrders24h} orders, ₹${totalRevenue24h.toFixed(0)}`);
+    } else if (allOrders.length > 0) {
+      // Use all synced orders to calculate daily average
+      const installDate  = new Date(shop.created_at);
+      const daysSince    = Math.max(1, Math.ceil((Date.now() - installDate.getTime()) / (1000 * 60 * 60 * 24)));
+      totalOrders24h     = allOrders.length / daysSince;
+      const totalRev     = allOrders.reduce((s, o) => s + (o.total_price || 0), 0);
+      totalRevenue24h    = totalRev / daysSince;
+      dataSource = 'db_avg';
+      console.log(`📊 DB avg: ${totalOrders24h.toFixed(1)} orders/day from ${allOrders.length} total`);
     }
 
-    // ── Fallback: use stored orders_snapshot ──────────────────────────────────
-    if (dataSource === 'estimate' || totalOrders24h === 0) {
+    // ── Fallback: use stored orders_snapshot (set by Refresh Data button) ────
+    if (totalOrders24h === 0) {
       const snap = shop.orders_snapshot;
       if (snap && snap.daily_orders > 0) {
         totalOrders24h  = snap.daily_orders;
         totalRevenue24h = snap.daily_revenue;
         dataSource = 'snapshot';
-        console.log(`📊 Using snapshot: ${totalOrders24h} orders/day`);
+        console.log(`📊 Snapshot: ${totalOrders24h} orders/day`);
       }
     }
 
-    // ── Fallback: estimate from sync data ─────────────────────────────────────
+    // ── Final fallback: estimate from whatever data we have ───────────────────
     if (totalOrders24h === 0) {
       const syncedTotal = shop.order_sync?.total_orders_synced || 0;
       const imagesUsed  = shop.images_used || 0;
@@ -264,17 +252,15 @@ router.get('/:shop_domain/predicted-impact', async (req, res) => {
       if (syncedTotal > 0) {
         totalOrders24h  = Math.max(1, syncedTotal / daysSince);
         totalRevenue24h = totalOrders24h * 1000;
-        dataSource = 'estimate';
       } else if (imagesUsed > 0) {
         totalOrders24h  = Math.max(10, (imagesUsed / daysSince) / 0.08);
         totalRevenue24h = totalOrders24h * 800;
-        dataSource = 'estimate';
       } else {
         totalOrders24h  = 20;
         totalRevenue24h = 20000;
-        dataSource = 'estimate';
       }
-      console.log(`📊 Estimate: ${totalOrders24h.toFixed(1)} orders/day (${dataSource})`);
+      dataSource = 'estimate';
+      console.log(`📊 Estimate: ${totalOrders24h.toFixed(1)} orders/day`);
     }
 
     // ── Step 3: STRICT formula — integer orders only ─────────────────────────
