@@ -8,6 +8,7 @@ const ShopModel = require("../models/dynamodb-shop");
 const UsageLogModel = require("../models/dynamodb-usage-log");
 const { v4: uuidv4 } = require("uuid");
 const sharp = require("sharp");
+const { selectPromptKey } = require("../services/prompt-selection");
 // NOTE: Using native FormData + Blob (Node 18+), NOT the form-data npm package
 
 // Configure multer for image upload (memory storage)
@@ -61,17 +62,51 @@ router.post("/", upload.single("userImage"), async (req, res) => {
       });
     }
 
-    // Call OpenAI gpt-image-2 with user image + product image
-    // Prefer per-request category from frontend, fall back to shop-level setting
     const productCategory =
-      req.body.product_category || shop.product_category || "apparel";
+      req.body.product_category || shop.product_category || "default";
+
+    let selectedCategories = Array.isArray(shop.product_categories)
+      ? shop.product_categories
+      : [];
+    const rawSelectedCategories =
+      req.body.categories || req.body.selected_categories || null;
+    if (rawSelectedCategories) {
+      try {
+        const parsed = JSON.parse(rawSelectedCategories);
+        if (Array.isArray(parsed)) {
+          selectedCategories = parsed;
+        }
+      } catch (parseError) {
+        console.warn(
+          "⚠️ Could not parse incoming categories payload:",
+          parseError.message,
+        );
+      }
+    }
+
+    const promptTextSeed = [
+      product_name,
+      req.body.product_title || "",
+      req.body.product_description || "",
+      req.body.product_category || "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const resolvedCategory = selectPromptKey({
+      productText: promptTextSeed || product_name || productCategory,
+      selectedCategories,
+      fallbackCategory: productCategory,
+    });
+
     console.log(`🏷️  Product category: ${productCategory}`);
+    console.log(`🧠 Resolved prompt category: ${resolvedCategory}`);
 
     const aiResult = await generateImageWithOpenAI(
       userImage,
       product_name,
       product_image_url,
-      productCategory,
+      resolvedCategory,
     );
 
     // Extract image URL + prompt tracking info
@@ -134,6 +169,211 @@ router.post("/", upload.single("userImage"), async (req, res) => {
 
 // Category-specific prompts for different product types
 const CATEGORY_PROMPTS = {
+  default: (productName) =>
+    `Create a polished, photorealistic fashion image of the customer wearing the product shown in the reference image. Preserve the customer's face, skin tone, pose, hairstyle, and background while replacing the clothing with the exact style, fit, and details from the reference. Make the result look like a real, high-end fashion photo.`,
+
+  party_dresses: (productName) =>
+    `Create a polished, photorealistic fashion image of the customer wearing the party dress shown in the product reference image. Preserve the customer's face, skin tone, pose, hairstyle, and background while replacing the clothing with the exact party dress style, fit, and details from the reference. Match the dress color, silhouette, neckline, fabric, and embellishments closely and make the result look like a real, high-end fashion photo.`,
+
+  cocktail_dress: (productName) => `TASK:
+Image 1: Product photo of a Cocktail Dress
+         (a semi-formal to formal short dress — typically knee-length or above,
+          could be bodycon, A-line, fit-and-flare, wrap, or structured.
+          Often features embellishments: sequins, lace, satin, or embroidery)
+Image 2: Full body or 3/4 body photo of the user (woman)
+Goal: Show the user wearing this exact cocktail dress as if she put it on in real life.
+
+STEP 1 — ANALYZE THE DRESS:
+- Identify silhouette: bodycon, A-line, fit-and-flare, wrap, shift, or structured/peplum
+- Identify neckline: V-neck, sweetheart, off-shoulder, one-shoulder, halter, or strapless
+- Identify length: above knee (mini), at knee, or just below knee
+- Identify embellishment type: sequins, lace, satin, velvet, embroidery, or chiffon overlay
+- Identify sleeve: sleeveless, spaghetti strap, short sleeve, or long sleeve
+
+STEP 2 — FULL BODY PLACEMENT:
+- Neckline must start at the exact position shown in the product — match precisely
+- Side seams must follow the user's actual body outline
+- For bodycon: fabric clings to the body — show the user's natural curves through the fabric
+- For A-line/fit-and-flare: fitted at bodice, flares at waist or hip — show fabric volume at skirt
+- Hem must fall at the correct position on the user's legs (above knee, at knee, or below)
+- Back of the dress (if open-back): must show the opening naturally if the user's back is visible
+
+STEP 3 — NECKLINE PRECISION:
+- Sweetheart: curved neckline following the bust line — no gap, no floating fabric
+- Off-shoulder: fabric sits ACROSS the collarbone, both shoulders bare
+  The tube of fabric must hug the chest and NOT slide or float
+- One-shoulder: one side covers, the other is completely bare — exact shoulder position must match
+- Strapless: fabric starts at the chest — show the structural boning edge
+  No straps must be visible unless the product has them
+- Halter: ties or loops at the back of the neck — fabric falls from neck to bust
+- V-neck: reproduce exact depth of V — shallow or plunging, match the product exactly
+
+STEP 4 — EMBELLISHMENT REALISM (MOST CRITICAL FOR PARTY WEAR):
+- Full sequin dress:
+  Each sequin must individually catch light
+  Show MULTIPLE light catches across the dress — not a single reflection
+  Sequins near the light source: bright sparkle
+  Sequins in shadow areas: darker but still reflective
+  The sequin texture must look dimensional — tiny discs overlapping each other
+  Never render a sequin dress as a flat shiny surface
+- Lace overlay:
+  The lace pattern must be visible as a mesh — semi-transparent
+  Reproduce the exact floral or geometric lace motif from the product
+  Show the fabric beneath the lace through the mesh holes
+  Lace edges must appear delicate — not thick or painted
+- Satin dress:
+  Very high contrast — bright specular highlight on the peaks of fabric folds
+  Deep, dark shadow in the valleys
+  The highlight must move as a single bright band across the surface
+  Show the characteristic "liquid" quality of satin — one side bright, other in shadow
+- Velvet dress:
+  Directional pile — the colour appears lighter in one direction, darker in the other
+  Show the characteristic colour shift where the fabric changes direction
+  Matte surface — no high-gloss shine like satin
+  Rich, deep colour with soft diffused highlight
+- Embroidered bodice:
+  Reproduce exact embroidery motif, thread colour, and placement
+  Raised thread texture must be visible — not flat
+  Stone or crystal embellishments must catch light as individual points
+
+STEP 5 — BODYCON SPECIFIC RULES:
+- Fabric must hug the body continuously — no gaps or floating sections
+- Show the natural contour of the user's body THROUGH the fabric
+- Fabric creases at the hip and mid-thigh from body movement
+- The dress must look like it is ON the body — not placed over it
+
+STEP 6 — FIT-AND-FLARE / A-LINE SPECIFIC RULES:
+- The transition from fitted bodice to flared skirt must happen at the exact waistline
+- Skirt volume must look three-dimensional — show fabric fullness and movement
+- Hem must swing or show slight movement — not hang perfectly flat
+
+STEP 7 — LIGHTING:
+- Identify dominant light direction from user's photo
+- Sequin dress: multiple scattered light catches — not directional, scattered sparkle
+- Satin: one broad directional highlight band across the surface
+- Velvet: soft diffused highlight, darker in shadow — no specular shine
+- Lace: light passes through the mesh holes, creating soft light patterns on skin beneath
+
+STEP 8 — SELF CHECK:
+[ ] Does the neckline style match the product exactly?
+[ ] Is the hem at the correct length on the user's legs?
+[ ] Are sequins rendered as individual light-catching elements (not flat shiny surface)?
+[ ] Is satin showing high-contrast directional highlight and shadow?
+[ ] Is lace semi-transparent with mesh pattern visible?
+[ ] Is velvet showing directional pile colour shift?
+[ ] Does bodycon fabric hug the body — not float over it?
+[ ] User's face, skin tone, and body completely unchanged?
+[ ] No extra jewellery, accessories, or shoes added?
+
+Output the final image only.`,
+  evening_gown: (productName) => `TASK:
+Image 1: Product photo of an Evening Gown
+         (a full-length formal gown worn to black-tie events, galas, or
+          formal parties — typically floor-length or with a train.
+          Could be ball gown, mermaid, A-line, column/sheath, or empire waist.
+          Often features premium fabrics: chiffon, tulle, satin, velvet, or heavily
+          embellished with crystals, beading, or intricate embroidery)
+Image 2: Full body photo of the user (woman) — must show full height for gown length to work
+Goal: Show the user wearing this exact evening gown.
+
+STEP 1 — ANALYZE THE GOWN:
+- Identify silhouette: ball gown, mermaid/trumpet, A-line, column/sheath, or empire waist
+- Identify neckline: plunging V, sweetheart, off-shoulder, illusion, halter, or high neck
+- Identify train: no train, sweep train, chapel train, or dramatic cathedral train
+- Identify fabric: satin, chiffon, tulle, velvet, organza, crepe, or beaded fabric
+- Identify embellishments: crystal/bead embroidery, feather trim, ruching, or draping detail
+
+STEP 2 — FULL BODY SILHOUETTE PLACEMENT:
+Ball Gown:
+- Fitted structured bodice from shoulder to natural waist
+- Dramatic full skirt begins at the waist — volume is EXTREME
+- Skirt must look three-dimensional with layers of fabric creating depth
+- If tulle underlayer: show the tulle volume creating the shape beneath the outer fabric
+- The skirt must be the most dramatic visual element — wide, full, majestic
+
+Mermaid / Trumpet:
+- Fitted from chest to mid-thigh — skin-tight, show the body's shape through the fabric
+- Flares dramatically below the knee — the flare must look like an explosion of fabric
+- The transition point (where it flares) must happen at the exact right position on the leg
+- Train (if present): fabric extends behind the user — show the length trailing naturally
+
+A-line Gown:
+- Fitted at the bodice, gradually flares from the waist to the floor
+- More subtle volume than ball gown — elegant flow, not extreme fullness
+- Floor-length hem must touch or brush the floor at the correct height
+
+Column / Sheath:
+- Minimal flare — follows the body from shoulder to floor in a straight line
+- Shows the body's silhouette through the fabric
+- Any ruching, draping, or side slits must be reproduced exactly
+- Side slit: must show at the exact height — revealing the leg naturally from that point
+
+Empire Waist:
+- Bodice ends just below the bust line — seam sits at the bust, not the natural waist
+- Skirt flows from under the bust — lightweight, flowing fabric
+- Fabric must look fluid and flowing from the high waistline
+
+STEP 3 — TRAIN REPRODUCTION:
+- If the product has a train: it must extend BEHIND the user on the floor
+- Even if the user is facing forward, the train must be implied at the sides or back
+- Train fabric must follow gravity — lying on the floor, not floating
+- If the product photo shows the train spread out: reproduce that spread
+- Train embellishments or border must match the gown exactly
+
+STEP 4 — PREMIUM FABRIC REALISM:
+Beaded / Crystal Embroidery (most common on evening gowns):
+- Each bead and crystal must individually catch light
+- Different parts of the gown have different bead densities — reproduce this
+- Heavy beading at bodice: maximum sparkle and light reflection
+- Lighter beading at skirt: more subtle, scattered sparkle
+- Bugle beads (elongated): show the directional light reflection along their length
+- Crystal stones: show the faceted refraction — multiple light points per stone, not one dot
+
+Chiffon gown:
+- Multiple layers visible at the skirt — slight transparency in thin areas
+- Fabric flows and moves — hem appears to float slightly
+- Light passes through the fabric — show subtle glow at the hem edges
+
+Tulle ball gown:
+- Show multiple layers of tulle creating volume — each layer adds depth
+- Tulle is stiff and holds its shape — the skirt must look structural, not floppy
+- Surface tulle may have embroidery or sparkle — reproduce exactly
+- The sheer quality of tulle must be visible — it is NOT opaque fabric
+
+Ruched satin/crepe:
+- Ruching creates horizontal gather lines across the fabric
+- Each gather must be visible as a ridge — not smoothed out
+- Fabric between gathers pulls tight — show the tension in the fabric
+
+STEP 5 — NECKLINE PRECISION:
+- Illusion neckline: sheer fabric covers the décolletage and shoulders
+  The skin beneath is visible through the sheer — reproduce this transparency
+  Embellishments on the illusion fabric float above the skin
+- Plunging V: reproduce exact depth — may plunge to the sternum or lower
+- Off-shoulder: fabric sits at the arm line, both shoulders completely exposed
+- High neck / Turtleneck: fabric reaches the base of the neck completely
+
+STEP 6 — LIGHTING FOR FORMAL EVENING WEAR:
+- Evening gowns are designed for dramatic lighting — reproduce this quality
+- Beaded/crystal fabric: scattered multi-point sparkle across the entire dress
+- Satin gown: dramatic single highlight band — very bright highlight, very deep shadow
+- Velvet gown: rich deep colour, soft highlight, almost no specular shine
+- The gown must look GLAMOROUS — not flat or muted
+- Maintain light direction consistency from the user's photo
+
+STEP 7 — SELF CHECK:
+[ ] Does the silhouette match the product exactly (ball gown volume, mermaid flare point)?
+[ ] Does the hem reach the floor at the correct height on the user?
+[ ] If there is a train, is it shown trailing behind/to the side?
+[ ] Are beads and crystals rendered as individual light-catching elements?
+[ ] Is tulle showing volume and slight transparency?
+[ ] Is chiffon showing soft flow and layered depth?
+[ ] Is the neckline style exactly reproduced?
+[ ] Does the gown look GLAMOROUS — not flat or dull?
+[ ] User's face, skin tone, and body completely unchanged?
+[ ] No extra jewellery, accessories, or shoes added to the image?
+
+Output the final image only.`,
   apparel: (
     productName,
   ) => `Generate a single, photorealistic photograph of the person from the customer image, now wearing the garment shown in the product reference image.
@@ -415,9 +655,12 @@ async function generateImageWithOpenAI(
     }
 
     // Step 1: Get category-specific prompt
-    const promptFunction = CATEGORY_PROMPTS[productCategory] || CATEGORY_PROMPTS.apparel;
+    const promptFunction =
+      CATEGORY_PROMPTS[productCategory] || CATEGORY_PROMPTS.default;
     const promptText = promptFunction(productName);
-    console.log(`📝 Using ${productCategory} prompt (${promptText.length} chars)`);
+    console.log(
+      `📝 Using ${productCategory} prompt (${promptText.length} chars)`,
+    );
 
     // ── DETAILED REQUEST LOG — visible in PM2 logs for every request ──────
     console.log("┌─────────────────────────────────────────────────────");
@@ -438,11 +681,16 @@ async function generateImageWithOpenAI(
       console.log("📥 Step 2: Downloading product image...");
       try {
         const productResponse = await fetch(productImageUrl);
-        if (!productResponse.ok) throw new Error(`HTTP ${productResponse.status}`);
+        if (!productResponse.ok)
+          throw new Error(`HTTP ${productResponse.status}`);
         productImageBuffer = Buffer.from(await productResponse.arrayBuffer());
         const ct = productResponse.headers.get("content-type");
         if (ct) productImageMimeType = ct.split(";")[0].trim();
-        console.log("✅ Product image downloaded:", productImageBuffer.length, "bytes");
+        console.log(
+          "✅ Product image downloaded:",
+          productImageBuffer.length,
+          "bytes",
+        );
       } catch (err) {
         console.error("❌ Could not download product image:", err.message);
         console.log("   Will proceed with customer image only");
@@ -464,13 +712,23 @@ async function generateImageWithOpenAI(
     form.append("prompt", promptText);
 
     // Customer photo → @Image1 using native Blob
-    form.append("image[]", new Blob([userImagePng], { type: "image/png" }), "customer_photo.png");
+    form.append(
+      "image[]",
+      new Blob([userImagePng], { type: "image/png" }),
+      "customer_photo.png",
+    );
 
     // Product photo → @Image2 using native Blob
     if (productImageBuffer) {
       const productImagePng = await sharp(productImageBuffer).png().toBuffer();
-      form.append("image[]", new Blob([productImagePng], { type: "image/png" }), "product_photo.png");
-      console.log(`✅ Product image PNG: ${productImagePng.length} bytes included as @Image2`);
+      form.append(
+        "image[]",
+        new Blob([productImagePng], { type: "image/png" }),
+        "product_photo.png",
+      );
+      console.log(
+        `✅ Product image PNG: ${productImagePng.length} bytes included as @Image2`,
+      );
     }
 
     console.log("⏳ Generating image (15-30 seconds)...");
@@ -485,7 +743,9 @@ async function generateImageWithOpenAI(
 
     if (!apiRes.ok) {
       const errData = await apiRes.json().catch(() => ({}));
-      throw new Error(`OpenAI API error ${apiRes.status}: ${errData.error?.message || apiRes.statusText}`);
+      throw new Error(
+        `OpenAI API error ${apiRes.status}: ${errData.error?.message || apiRes.statusText}`,
+      );
     }
 
     const imageData = await apiRes.json();
@@ -494,7 +754,10 @@ async function generateImageWithOpenAI(
     // Step 4: Extract base64 image
     const generatedBase64 = imageData?.data?.[0]?.b64_json;
     if (!generatedBase64) {
-      console.error("❌ No image in response:", JSON.stringify(imageData).substring(0, 400));
+      console.error(
+        "❌ No image in response:",
+        JSON.stringify(imageData).substring(0, 400),
+      );
       throw new Error("OpenAI did not return an image.");
     }
 
@@ -506,13 +769,19 @@ async function generateImageWithOpenAI(
     const compressedBuffer = await sharp(generatedImageBuffer)
       .jpeg({ quality: 85, progressive: true, mozjpeg: true })
       .toBuffer();
-    console.log(`   ${generatedImageBuffer.length} → ${compressedBuffer.length} bytes (${Math.round((1 - compressedBuffer.length / generatedImageBuffer.length) * 100)}% smaller)`);
+    console.log(
+      `   ${generatedImageBuffer.length} → ${compressedBuffer.length} bytes (${Math.round((1 - compressedBuffer.length / generatedImageBuffer.length) * 100)}% smaller)`,
+    );
 
     // Step 6: Upload to S3
     console.log("📤 Step 6: Uploading to S3...");
     const s3Url = await uploadImageToS3(
-      { buffer: compressedBuffer, originalname: "openai-tryon.jpg", mimetype: "image/jpeg" },
-      productName
+      {
+        buffer: compressedBuffer,
+        originalname: "openai-tryon.jpg",
+        mimetype: "image/jpeg",
+      },
+      productName,
     );
     console.log("✅ Complete! Virtual try-on image ready");
     return {
@@ -521,7 +790,6 @@ async function generateImageWithOpenAI(
       promptPreview: promptText.substring(0, 500),
       aiModel: "gpt-image-2",
     };
-
   } catch (error) {
     console.error("❌ OpenAI generation error:", error.message);
     try {

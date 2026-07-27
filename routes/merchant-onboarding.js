@@ -124,8 +124,8 @@ router.post('/', async (req, res) => {
       shop_settings: {
         button: {
           text: 'Try the Look',
-          color: '#000000',
-          bg_color: '#FFFFFF',
+          color: '#fff',
+          bg_color: '#000',
           border_radius: 8,
           size: 'medium',
         },
@@ -133,7 +133,7 @@ router.post('/', async (req, res) => {
           title: 'See Yourself in This Look',
           upload_text: 'Upload Your Photo',
           generate_text: 'Generate Preview',
-          bg_color: '#FFFFFF',
+          bg_color: '#000',
           border_radius: 12,
         },
         advanced: {

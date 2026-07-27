@@ -39,7 +39,8 @@ class ShopModel {
         images_limit:50,
         is_active: true,
         app_status: 'disabled', // New field for activation status
-        product_category: null, // Single category (apparel, jewellery, footwear, accessories)
+        product_category: null,
+        product_categories: [],
         shop_settings: null, // Will be set when merchant customizes (defaults applied in frontend/theme)
         external_user_id: null,
         stripe_customer_id: null,

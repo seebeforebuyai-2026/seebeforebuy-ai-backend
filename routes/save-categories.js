@@ -13,70 +13,81 @@ const ShopModel = require('../models/dynamodb-shop');
 
 /**
  * POST /api/merchant/save-categories
- * 
- * Save product category for a shop (single category only)
+ *
+ * Save product category selections for a shop.
+ * Supports multiple main categories and their subcategories.
  */
 router.post('/', async (req, res) => {
   try {
-    const { shop_domain, category } = req.body;
+    const { shop_domain, category, categories, subcategories } = req.body;
 
-    console.log('💾 Saving product category...');
+    console.log('💾 Saving product categories...');
     console.log('   Shop domain:', shop_domain);
     console.log('   Category:', category);
+    console.log('   Categories:', categories);
+    console.log('   Subcategories:', subcategories);
 
-    // Validation
     if (!shop_domain) {
-      return res.status(400).json({ 
-        error: 'shop_domain is required' 
-      });
+      return res.status(400).json({ error: 'shop_domain is required' });
     }
 
-    if (!category || typeof category !== 'string') {
-      return res.status(400).json({ 
-        error: 'category is required and must be a string' 
-      });
+    const validCategories = ['party_dresses', 'indo_western', 'winter_wear'];
+
+    const parsedCategories = Array.isArray(categories)
+      ? categories
+      : (typeof category === 'string' ? [{ main_category: category, subcategories: [] }] : []);
+
+    if (!parsedCategories.length) {
+      return res.status(400).json({ error: 'At least one category is required' });
     }
 
-    // Validate category — must match one of the 12 supported categories
-    const validCategories = [
-      'apparel', 'kurti', 'saree', 't_shirt', 'shirt', 'suit',
-      'streetwear', 'watch', 'shoes', 'jewellery', 'footwear', 'accessories'
-    ];
-    if (!validCategories.includes(category)) {
-      return res.status(400).json({ 
-        error: `Invalid category. Must be one of: ${validCategories.join(', ')}` 
-      });
-    }
+    const normalizedCategories = parsedCategories
+      .filter(Boolean)
+      .map((entry) => {
+        const mainCategory = typeof entry === 'string' ? entry : entry.main_category || entry.mainCategory;
+        const subcategoryList = Array.isArray(entry.subcategories)
+          ? entry.subcategories
+          : (Array.isArray(subcategories) ? subcategories : []);
 
-    // Get existing shop
+        if (!mainCategory || !validCategories.includes(mainCategory)) {
+          throw new Error(`Invalid main category: ${mainCategory}`);
+        }
+
+        const normalizedSubcategories = (subcategoryList || [])
+          .filter((item) => typeof item === 'string' && item.trim())
+          .map((item) => item.trim());
+
+        return {
+          main_category: mainCategory,
+          subcategories: normalizedSubcategories,
+        };
+      });
+
     const shop = await ShopModel.findOne(shop_domain);
-    
     if (!shop) {
-      return res.status(404).json({ 
-        error: 'Shop not found' 
-      });
+      return res.status(404).json({ error: 'Shop not found' });
     }
 
-    // Update shop with single category using UpdateCommand
     const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
     const { docClient, TABLES } = require('../config/dynamodb');
-    
+
     await docClient.send(new UpdateCommand({
       TableName: TABLES.SHOPS,
       Key: { shop_domain },
-      UpdateExpression: 'SET product_category = :category, updated_at = :now',
+      UpdateExpression: 'SET product_category = :category, product_categories = :categories, updated_at = :now',
       ExpressionAttributeValues: {
-        ':category': category,
+        ':category': normalizedCategories[0].main_category,
+        ':categories': normalizedCategories,
         ':now': new Date().toISOString(),
       },
     }));
 
-    console.log('✅ Category saved successfully!');
+    console.log('✅ Categories saved successfully!');
 
     res.json({
       success: true,
-      message: 'Category saved successfully',
-      category: category,
+      message: 'Categories saved successfully',
+      categories: normalizedCategories,
     });
 
   } catch (error) {
