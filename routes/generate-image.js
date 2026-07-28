@@ -93,20 +93,32 @@ router.post("/", upload.single("userImage"), async (req, res) => {
       .filter(Boolean)
       .join(" ");
 
-    const resolvedCategory = selectPromptKey({
-      productText: promptTextSeed || product_name || productCategory,
-      selectedCategories,
-      fallbackCategory: productCategory,
-    });
+    // ── NEW: if frontend sent a fully-resolved custom_prompt, use it directly ──
+    const customPrompt = req.body.custom_prompt || null;
+
+    let resolvedCategory = 'default';
+    if (!customPrompt) {
+      // Fall back to old selectPromptKey logic only when no custom prompt
+      resolvedCategory = selectPromptKey({
+        productText: promptTextSeed || product_name || productCategory,
+        selectedCategories,
+        fallbackCategory: productCategory,
+      });
+    }
 
     console.log(`🏷️  Product category: ${productCategory}`);
-    console.log(`🧠 Resolved prompt category: ${resolvedCategory}`);
+    if (customPrompt) {
+      console.log(`📝 Using custom_prompt from frontend (${customPrompt.length} chars)`);
+    } else {
+      console.log(`🧠 Resolved prompt category: ${resolvedCategory}`);
+    }
 
     const aiResult = await generateImageWithOpenAI(
       userImage,
       product_name,
       product_image_url,
       resolvedCategory,
+      customPrompt,   // <-- pass through (null if not provided)
     );
 
     // Extract image URL + prompt tracking info
@@ -643,6 +655,7 @@ async function generateImageWithOpenAI(
   productName,
   productImageUrl,
   productCategory = "apparel",
+  customPrompt = null,       // NEW — full prompt text from frontend prompts.js
 ) {
   try {
     console.log("🎨 Starting OpenAI gpt-image-2 virtual try-on...");
@@ -654,13 +667,17 @@ async function generateImageWithOpenAI(
       throw new Error("OPENAI_API_KEY is not set in environment variables.");
     }
 
-    // Step 1: Get category-specific prompt
-    const promptFunction =
-      CATEGORY_PROMPTS[productCategory] || CATEGORY_PROMPTS.default;
-    const promptText = promptFunction(productName);
-    console.log(
-      `📝 Using ${productCategory} prompt (${promptText.length} chars)`,
-    );
+    // Step 1: Resolve prompt — custom_prompt takes priority over CATEGORY_PROMPTS
+    let promptText;
+    if (customPrompt && customPrompt.trim().length > 0) {
+      promptText = customPrompt.trim();
+      console.log(`📝 Using custom_prompt from frontend (${promptText.length} chars)`);
+    } else {
+      const promptFunction =
+        CATEGORY_PROMPTS[productCategory] || CATEGORY_PROMPTS.default;
+      promptText = promptFunction(productName);
+      console.log(`📝 Using CATEGORY_PROMPTS[${productCategory}] (${promptText.length} chars)`);
+    }
 
     // ── DETAILED REQUEST LOG — visible in PM2 logs for every request ──────
     console.log("┌─────────────────────────────────────────────────────");
