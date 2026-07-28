@@ -31,7 +31,16 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'shop_domain is required' });
     }
 
-    const validCategories = ['party_dresses', 'indo_western', 'winter_wear'];
+    const validCategories = [
+      'indo_western',
+      'party_wear',
+      'winter_wear',
+      'casual',
+      'watch',
+      'jewellery',
+      // legacy values (keep for backward compat)
+      'party_dresses',
+    ];
 
     const parsedCategories = Array.isArray(categories)
       ? categories
