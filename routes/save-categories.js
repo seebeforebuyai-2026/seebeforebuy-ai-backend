@@ -38,8 +38,10 @@ router.post('/', async (req, res) => {
       'casual',
       'watch',
       'jewellery',
+      'activewear',
       // legacy values (keep for backward compat)
       'party_dresses',
+
     ];
 
     const parsedCategories = Array.isArray(categories)
