@@ -697,7 +697,11 @@ async function generateImageWithOpenAI(
     if (productImageUrl) {
       console.log("📥 Step 2: Downloading product image...");
       try {
-        const productResponse = await fetch(productImageUrl);
+        // Normalize protocol-relative URLs (//example.com/...) to https://
+        const normalizedUrl = productImageUrl.startsWith('//')
+          ? 'https:' + productImageUrl
+          : productImageUrl;
+        const productResponse = await fetch(normalizedUrl);
         if (!productResponse.ok)
           throw new Error(`HTTP ${productResponse.status}`);
         productImageBuffer = Buffer.from(await productResponse.arrayBuffer());
