@@ -142,6 +142,9 @@ console.log('✅ Merchant onboarding route loaded');
 const saveCategoriesRoute = require('./routes/save-categories');
 console.log('✅ Save categories route loaded');
 
+const savePhoneRoute = require('./routes/save-phone');
+console.log('✅ Save phone route loaded');
+
 const updateAppStatusRoute = require('./routes/update-app-status');
 console.log('✅ Update app status route loaded');
 
@@ -182,6 +185,9 @@ console.log('✅ Route registered: POST /api/merchant/onboard');
 
 app.use('/api/merchant/save-categories', saveCategoriesRoute);
 console.log('✅ Route registered: POST /api/merchant/save-categories');
+
+app.use('/api/merchant/save-phone', savePhoneRoute);
+console.log('✅ Route registered: POST /api/merchant/save-phone');
 
 app.use('/api/merchant/update-app-status', updateAppStatusRoute);
 console.log('✅ Route registered: POST /api/merchant/update-app-status');
