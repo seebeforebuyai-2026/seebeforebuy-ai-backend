@@ -165,7 +165,7 @@ Your Free Plan Includes:
 Need help? Contact us at support@seebeforebuy.com
 
 Best regards,
-The See Before Buy AI Team
+The See Before Buy AI Team 
     `;
 
     // Prepare email parameters
