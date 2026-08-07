@@ -148,13 +148,6 @@ Hi ${shopName} team,
 
 Thank you for installing See Before Buy AI! Your account has been created successfully.
 
-Your Login Credentials:
-Email: ${toEmail}
-Temporary Password: ${temporaryPassword}
-Login URL: https://dashboard.seebeforebuy.in/
-
-⚠️ Please change your password after first login for security.
-
 Next Steps:
 1. Add the "Try the Look" button to your product pages
 2. Test the virtual try-on feature
