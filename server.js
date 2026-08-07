@@ -145,6 +145,9 @@ console.log('✅ Save categories route loaded');
 const savePhoneRoute = require('./routes/save-phone');
 console.log('✅ Save phone route loaded');
 
+const shopifySubscriptionRoute = require('./routes/shopify-subscription');
+console.log('✅ Shopify subscription route loaded');
+
 const updateAppStatusRoute = require('./routes/update-app-status');
 console.log('✅ Update app status route loaded');
 
@@ -188,6 +191,9 @@ console.log('✅ Route registered: POST /api/merchant/save-categories');
 
 app.use('/api/merchant/save-phone', savePhoneRoute);
 console.log('✅ Route registered: POST /api/merchant/save-phone');
+
+app.use('/api/shopify-subscription-activated', shopifySubscriptionRoute);
+console.log('✅ Route registered: POST /api/shopify-subscription-activated');
 
 app.use('/api/merchant/update-app-status', updateAppStatusRoute);
 console.log('✅ Route registered: POST /api/merchant/update-app-status');
