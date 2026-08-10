@@ -125,9 +125,7 @@ async function sendWelcomeEmail(toEmail, shopName, temporaryPassword) {
     </ul>
     
     <p>Need more images? Upgrade anytime from your dashboard!</p>
-    
-    <a href="https://dashboard.seebeforebuy.in/" class="button">Login to Dashboard</a>
-    
+        
     <p>If you have any questions, reply to this email or contact us at <a href="mailto:support@seebeforebuy.com">support@seebeforebuy.com</a></p>
     
     <p>Best regards,<br>
