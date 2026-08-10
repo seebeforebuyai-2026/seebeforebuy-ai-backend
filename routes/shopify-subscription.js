@@ -39,10 +39,10 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'shop_domain is required' });
     }
 
-    // Find the shop
-    const shop = await ShopModel.findOne(shop_domain);
+    // Find or create the shop (handles case where shop just reinstalled)
+    const shop = await ShopModel.findOrCreate(shop_domain);
     if (!shop) {
-      return res.status(404).json({ error: 'Shop not found' });
+      return res.status(404).json({ error: 'Shop not found and could not be created' });
     }
 
     // Determine plan from plan_name or images_limit if provided directly

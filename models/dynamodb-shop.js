@@ -120,6 +120,7 @@ class ShopModel {
               external_user_id = :user_id,
               stripe_customer_id = :customer_id,
               stripe_subscription_id = :subscription_id,
+              shopify_charge_id = :charge_id,
               last_reset_at = :now,
               updated_at = :now
         `,
@@ -130,6 +131,7 @@ class ShopModel {
           ':user_id': planData.external_user_id || null,
           ':customer_id': planData.stripe_customer_id || null,
           ':subscription_id': planData.stripe_subscription_id || null,
+          ':charge_id': planData.shopify_charge_id || null,
           ':now': new Date().toISOString(),
         },
         ReturnValues: 'ALL_NEW',
