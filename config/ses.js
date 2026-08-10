@@ -166,7 +166,7 @@ Need help? Contact us at support@seebeforebuy.com
 
 Best regards,
 The See Before Buy AI Team 
-    `;
+    `; 
 
     // Prepare email parameters
     const params = {
