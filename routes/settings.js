@@ -252,7 +252,8 @@ function validateSettings(settings) {
  * Validate hex color format
  */
 function isValidColor(color) {
-  return /^#[0-9A-F]{6}$/i.test(color);
+  // Accept both #RGB (3-digit) and #RRGGBB (6-digit) hex colors
+  return /^#[0-9A-F]{6}$/i.test(color) || /^#[0-9A-F]{3}$/i.test(color);
 }
 
 module.exports = router;
