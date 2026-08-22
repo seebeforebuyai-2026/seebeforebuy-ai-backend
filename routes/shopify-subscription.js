@@ -24,16 +24,19 @@ const PLAN_CREDITS = {
   'standard': { images_limit: 500, plan_type: 'starter' },
   'growth':   { images_limit: 1000, plan_type: 'growth' },
   'scale':    { images_limit: 10000, plan_type: 'pro' },
+  // Free / uninstall reset
+  'free': { images_limit: 50, plan_type: 'free' },
 };
 
 router.post('/', async (req, res) => {
   try {
-    const { shop_domain, charge_id, plan_name } = req.body;
+    const { shop_domain, charge_id, plan_name, reason } = req.body;
 
     console.log('💳 Shopify subscription activated:');
     console.log('   Shop:', shop_domain);
     console.log('   Charge ID:', charge_id);
     console.log('   Plan Name:', plan_name);
+    if (reason) console.log('   Reason:', reason);
 
     if (!shop_domain) {
       return res.status(400).json({ error: 'shop_domain is required' });
@@ -43,6 +46,28 @@ router.post('/', async (req, res) => {
     const shop = await ShopModel.findOrCreate(shop_domain);
     if (!shop) {
       return res.status(404).json({ error: 'Shop not found and could not be created' });
+    }
+
+    // ── On uninstall / downgrade to free: reset to free plan ──────────────
+    const isFreePlan = (plan_name || '').toLowerCase() === 'free'
+      || reason === 'app_uninstalled';
+
+    if (isFreePlan) {
+      const updatedShop = await ShopModel.updatePlan(shop_domain, {
+        plan_type: 'free',
+        images_limit: 50,
+        shopify_charge_id: null,
+      });
+      console.log(`✅ Plan reset to free: ${shop_domain} (reason: ${reason || 'downgrade'})`);
+      return res.json({
+        success: true,
+        message: 'Plan reset to free',
+        shop: {
+          domain: updatedShop.shop_domain,
+          plan: updatedShop.plan_type,
+          images_limit: updatedShop.images_limit,
+        },
+      });
     }
 
     // Determine plan from plan_name or images_limit if provided directly
