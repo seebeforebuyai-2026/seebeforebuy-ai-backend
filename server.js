@@ -166,6 +166,9 @@ console.log('✅ Download image route loaded');
 const merchantAuthRoute = require('./routes/merchant-auth');
 console.log('✅ Merchant auth route loaded');
 
+const resetPlanRoute = require('./routes/reset-plan');
+console.log('✅ Reset plan route loaded');
+
 // ============================================
 // 6. REGISTER ROUTES
 // ============================================
@@ -216,6 +219,9 @@ console.log('✅ Route registered: GET /api/download-image');
 app.use('/api/merchant/auth', merchantAuthRoute);
 console.log('✅ Route registered: POST /api/merchant/auth/login');
 console.log('✅ Route registered: POST /api/merchant/auth/change-password');
+
+app.use('/api/reset-plan', resetPlanRoute);
+console.log('✅ Route registered: POST /api/reset-plan');
 
 // ============================================
 // 7. HEALTH CHECK ENDPOINT
