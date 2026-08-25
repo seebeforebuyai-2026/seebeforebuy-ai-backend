@@ -71,15 +71,18 @@ router.post('/', async (req, res) => {
     if (existingShop) {
       console.log('🔄 Shop already exists (reinstall) — resetting plan to free');
 
-      // REINSTALL: always reset plan to free regardless of previous plan
+      // REINSTALL: reset plan to free
       await ShopModel.updatePlan(shop_domain, {
         plan_type: 'free',
         images_limit: 50,
         shopify_charge_id: null,
       });
 
-      // Also clear install_status flag
-      await ShopModel.setInstallStatus(shop_domain, 'installed');
+      // Set install_status = "uninstalled" so that when Shopify fires
+      // app_subscriptions/update with ACTIVE (auto-reinstated subscription),
+      // our webhook handler sees the flag and skips re-activation.
+      // The loader will clear this flag after the first page open.
+      await ShopModel.setInstallStatus(shop_domain, 'uninstalled');
 
       console.log(`✅ Plan reset to free on reinstall: ${shop_domain}`);
 

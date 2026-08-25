@@ -76,18 +76,15 @@ router.post('/', async (req, res) => {
     }
 
     // ── loader_sync: only update plan_type, do NOT reset images_used ──────
-    // This prevents wiping usage counters on every page load
     if (reason === 'loader_sync') {
-      let syncPlanType = 'starter';
+      let syncPlanType = plan_name || 'starter'; // plan_name is already normalized (pro/growth/starter)
       let syncLimit = 500;
-      const lowerName = (plan_name || '').toLowerCase();
-      if (lowerName.includes('scale')) { syncPlanType = 'pro'; syncLimit = 10000; }
-      else if (lowerName.includes('growth')) { syncPlanType = 'growth'; syncLimit = 1000; }
-      else if (lowerName.includes('standard')) { syncPlanType = 'starter'; syncLimit = 500; }
+      if (syncPlanType === 'pro') syncLimit = 10000;
+      else if (syncPlanType === 'growth') syncLimit = 1000;
+      else if (syncPlanType === 'starter') syncLimit = 500;
       else if (req.body.images_limit) {
         const lim = parseInt(req.body.images_limit);
-        if (lim >= 10000) { syncPlanType = 'pro'; syncLimit = 10000; }
-        else if (lim >= 1000) { syncPlanType = 'growth'; syncLimit = 1000; }
+        syncLimit = lim;
       }
       const updatedShop = await ShopModel.syncPlanType(shop_domain, syncPlanType, syncLimit);
       console.log(`🔄 Plan synced (no usage reset): ${shop_domain} → ${syncPlanType}`);
