@@ -107,7 +107,7 @@ class ShopModel {
     }
   }
 
-  // Update shop plan
+  // Update shop plan (full reset — use for new subscriptions and cancellations)
   static async updatePlan(shop_domain, planData) {
     try {
       const result = await docClient.send(new UpdateCommand({
@@ -141,6 +141,36 @@ class ShopModel {
 
     } catch (error) {
       console.error('❌ Error updating plan:', error);
+      throw error;
+    }
+  }
+
+  // Sync plan type only — does NOT reset images_used
+  // Use for loader-sync where we only want to correct the plan_type field
+  static async syncPlanType(shop_domain, plan_type, images_limit, shopify_charge_id = null) {
+    try {
+      const result = await docClient.send(new UpdateCommand({
+        TableName: TABLES.SHOPS,
+        Key: { shop_domain },
+        UpdateExpression: `
+          SET plan_type = :plan,
+              images_limit = :limit,
+              shopify_charge_id = :charge_id,
+              updated_at = :now
+        `,
+        ExpressionAttributeValues: {
+          ':plan': plan_type,
+          ':limit': images_limit,
+          ':charge_id': shopify_charge_id || null,
+          ':now': new Date().toISOString(),
+        },
+        ReturnValues: 'ALL_NEW',
+      }));
+
+      return result.Attributes;
+
+    } catch (error) {
+      console.error('❌ Error syncing plan type:', error);
       throw error;
     }
   }

@@ -50,9 +50,14 @@ router.post('/', async (req, res) => {
 
     // ── On uninstall / downgrade to free: reset to free plan ──────────────
     const isFreePlan = (plan_name || '').toLowerCase() === 'free'
-      || reason === 'app_uninstalled';
+      || reason === 'app_uninstalled'
+      || reason === 'no_active_shopify_subscription'
+      || reason === 'subscription_cancelled'
+      || reason === 'subscription_expired'
+      || reason === 'subscription_frozen';
 
     if (isFreePlan) {
+      // For uninstall/cancellation: full reset including images_used = 0
       const updatedShop = await ShopModel.updatePlan(shop_domain, {
         plan_type: 'free',
         images_limit: 50,
@@ -68,6 +73,25 @@ router.post('/', async (req, res) => {
           images_limit: updatedShop.images_limit,
         },
       });
+    }
+
+    // ── loader_sync: only update plan_type, do NOT reset images_used ──────
+    // This prevents wiping usage counters on every page load
+    if (reason === 'loader_sync') {
+      let syncPlanType = 'starter';
+      let syncLimit = 500;
+      const lowerName = (plan_name || '').toLowerCase();
+      if (lowerName.includes('scale')) { syncPlanType = 'pro'; syncLimit = 10000; }
+      else if (lowerName.includes('growth')) { syncPlanType = 'growth'; syncLimit = 1000; }
+      else if (lowerName.includes('standard')) { syncPlanType = 'starter'; syncLimit = 500; }
+      else if (req.body.images_limit) {
+        const lim = parseInt(req.body.images_limit);
+        if (lim >= 10000) { syncPlanType = 'pro'; syncLimit = 10000; }
+        else if (lim >= 1000) { syncPlanType = 'growth'; syncLimit = 1000; }
+      }
+      const updatedShop = await ShopModel.syncPlanType(shop_domain, syncPlanType, syncLimit);
+      console.log(`🔄 Plan synced (no usage reset): ${shop_domain} → ${syncPlanType}`);
+      return res.json({ success: true, message: 'Plan synced', shop: { domain: shop_domain, plan: syncPlanType } });
     }
 
     // Determine plan from plan_name or images_limit if provided directly
