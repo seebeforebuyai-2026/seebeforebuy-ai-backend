@@ -149,53 +149,8 @@ class ShopModel {
       throw error;
     }
   }
-    try {
-      const result = await docClient.send(new UpdateCommand({
-        TableName: TABLES.SHOPS,
-        Key: { shop_domain },
-        UpdateExpression: `
-          SET plan_type = :free,
-              images_limit = :limit,
-              images_used = :zero,
-              shopify_charge_id = :null,
-              app_uninstalled = :yes,
-              uninstalled_at = :now,
-              updated_at = :now
-        `,
-        ExpressionAttributeValues: {
-          ':free': 'free',
-          ':limit': 50,
-          ':zero': 0,
-          ':null': null,
-          ':yes': true,
-          ':now': new Date().toISOString(),
-        },
-        ReturnValues: 'ALL_NEW',
-      }));
-      console.log(`✅ Shop marked as uninstalled + plan reset to free: ${shop_domain}`);
-      return result.Attributes;
-    } catch (error) {
-      console.error('❌ Error marking shop uninstalled:', error);
-      throw error;
-    }
-  }
 
-  // Clear the uninstalled flag after reinstall is detected
-  static async clearUninstalledFlag(shop_domain) {
-    try {
-      await docClient.send(new UpdateCommand({
-        TableName: TABLES.SHOPS,
-        Key: { shop_domain },
-        UpdateExpression: 'REMOVE app_uninstalled, uninstalled_at SET updated_at = :now',
-        ExpressionAttributeValues: {
-          ':now': new Date().toISOString(),
-        },
-      }));
-      console.log(`✅ Uninstalled flag cleared for: ${shop_domain}`);
-    } catch (error) {
-      console.error('❌ Error clearing uninstalled flag:', error);
-    }
-  }
+  // Update shop plan (full reset — use for new subscriptions and cancellations)
   static async updatePlan(shop_domain, planData) {
     try {
       const result = await docClient.send(new UpdateCommand({
