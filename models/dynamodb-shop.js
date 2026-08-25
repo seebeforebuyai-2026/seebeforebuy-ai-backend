@@ -38,10 +38,11 @@ class ShopModel {
         images_used: 0,
         images_limit:50,
         is_active: true,
-        app_status: 'disabled', // New field for activation status
+        install_status: 'installed',
+        app_status: 'disabled',
         product_category: null,
         product_categories: [],
-        shop_settings: null, // Will be set when merchant customizes (defaults applied in frontend/theme)
+        shop_settings: null,
         external_user_id: null,
         stripe_customer_id: null,
         stripe_subscription_id: null,
@@ -107,8 +108,47 @@ class ShopModel {
     }
   }
 
-  // Mark shop as uninstalled — sets flag + resets plan to free
-  static async markUninstalled(shop_domain) {
+  // Set install_status field ("installed" or "uninstalled")
+  // When uninstalled: also resets plan to free
+  static async setInstallStatus(shop_domain, status) {
+    try {
+      let updateExpression = 'SET install_status = :status, updated_at = :now';
+      const expressionValues = {
+        ':status': status,
+        ':now': new Date().toISOString(),
+      };
+
+      if (status === 'uninstalled') {
+        // Also reset plan to free when uninstalling
+        updateExpression = `
+          SET install_status = :status,
+              plan_type = :free,
+              images_limit = :limit,
+              images_used = :zero,
+              shopify_charge_id = :null,
+              updated_at = :now
+        `;
+        expressionValues[':free'] = 'free';
+        expressionValues[':limit'] = 50;
+        expressionValues[':zero'] = 0;
+        expressionValues[':null'] = null;
+      }
+
+      const result = await docClient.send(new UpdateCommand({
+        TableName: TABLES.SHOPS,
+        Key: { shop_domain },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeValues: expressionValues,
+        ReturnValues: 'ALL_NEW',
+      }));
+
+      console.log(`✅ install_status set to "${status}" for ${shop_domain}`);
+      return result.Attributes;
+    } catch (error) {
+      console.error('❌ Error setting install_status:', error);
+      throw error;
+    }
+  }
     try {
       const result = await docClient.send(new UpdateCommand({
         TableName: TABLES.SHOPS,
