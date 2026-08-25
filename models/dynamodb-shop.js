@@ -118,8 +118,11 @@ class ShopModel {
         ':now': new Date().toISOString(),
       };
 
-      if (status === 'uninstalled') {
-        // Also reset plan to free when uninstalling
+      if (status === 'uninstalled' || status === 'reinstalled') {
+        // Reset plan to free on uninstall AND reinstall.
+        // 'uninstalled' is set by the app/uninstalled webhook.
+        // 'reinstalled' is set by the app/installed webhook (existing shop = reinstall).
+        // Both cases mean the merchant no longer has a valid paid subscription.
         updateExpression = `
           SET install_status = :status,
               plan_type = :free,
