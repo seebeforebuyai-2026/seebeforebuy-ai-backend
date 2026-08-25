@@ -69,23 +69,34 @@ router.post('/', async (req, res) => {
     const existingShop = await ShopModel.findOne(shop_domain);
     
     if (existingShop) {
-      console.log('⚠️  Shop already exists, returning existing credentials');
-      
-      // Return existing credentials (if they haven't changed password yet)
+      console.log('🔄 Shop already exists (reinstall) — resetting plan to free');
+
+      // REINSTALL: always reset plan to free regardless of previous plan
+      await ShopModel.updatePlan(shop_domain, {
+        plan_type: 'free',
+        images_limit: 50,
+        shopify_charge_id: null,
+      });
+
+      // Also clear install_status flag
+      await ShopModel.setInstallStatus(shop_domain, 'installed');
+
+      console.log(`✅ Plan reset to free on reinstall: ${shop_domain}`);
+
       return res.json({
         success: true,
-        message: 'Shop already exists',
+        message: 'Shop reinstalled — plan reset to free',
         merchant: {
           shop_domain: existingShop.shop_domain,
           shop_email: existingShop.shop_email,
-          plan_type: existingShop.plan_type,
-          images_limit: existingShop.images_limit,
+          plan_type: 'free',
+          images_limit: 50,
         },
         credentials: {
           email: existingShop.shop_email,
           temporary_password: existingShop.temporary_password || 'Already changed',
         },
-        email_sent: false, // Don't send email again
+        email_sent: false,
       });
     }
 
