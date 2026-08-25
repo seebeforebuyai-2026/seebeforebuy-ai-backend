@@ -169,6 +169,9 @@ console.log('✅ Merchant auth route loaded');
 const resetPlanRoute = require('./routes/reset-plan');
 console.log('✅ Reset plan route loaded');
 
+const markUninstalledRoute = require('./routes/mark-uninstalled');
+console.log('✅ Mark uninstalled route loaded');
+
 // ============================================
 // 6. REGISTER ROUTES
 // ============================================
@@ -222,6 +225,9 @@ console.log('✅ Route registered: POST /api/merchant/auth/change-password');
 
 app.use('/api/reset-plan', resetPlanRoute);
 console.log('✅ Route registered: POST /api/reset-plan');
+
+app.use('/api/mark-uninstalled', markUninstalledRoute);
+console.log('✅ Route registered: POST /api/mark-uninstalled');
 
 // ============================================
 // 7. HEALTH CHECK ENDPOINT
