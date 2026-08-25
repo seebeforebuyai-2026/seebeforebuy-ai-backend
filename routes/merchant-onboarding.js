@@ -78,11 +78,11 @@ router.post('/', async (req, res) => {
         shopify_charge_id: null,
       });
 
-      // Set install_status = "uninstalled" so that when Shopify fires
-      // app_subscriptions/update with ACTIVE (auto-reinstated subscription),
-      // our webhook handler sees the flag and skips re-activation.
-      // The loader will clear this flag after the first page open.
-      await ShopModel.setInstallStatus(shop_domain, 'uninstalled');
+      // Set install_status = "reinstalled" so the loader knows to skip
+      // the Shopify subscription sync on the first page open after reinstall.
+      // The loader treats this the same as "uninstalled" — it cancels any
+      // active Shopify subscription, resets plan to free, and clears the flag.
+      await ShopModel.setInstallStatus(shop_domain, 'reinstalled');
 
       console.log(`✅ Plan reset to free on reinstall: ${shop_domain}`);
 
