@@ -1,14 +1,13 @@
 const klavioApiKey =
   process.env.KLAVIO_API_KEY || "pk_TFQhJ4_779696a46a11325b80fbae2a219441ca1f";
 
-const { EventsApi, ListsApi, ApiKeySession } = require("klaviyo-api");
+const { EventsApi, ProfilesApi, ApiKeySession } = require("klaviyo-api");
 
-// Initialize Klaviyo
 const session = new ApiKeySession(klavioApiKey);
 const eventsApi = new EventsApi(session);
-const listsApi = new ListsApi(session);
+const profilesApi = new ProfilesApi(session);
 
-// Your Klaviyo List ID — Email List
+// Your Email List ID
 const LIST_ID = "ShJbSJ";
 
 async function sendWelcomeEmail(toEmail, shopName, temporaryPassword) {
@@ -17,24 +16,46 @@ async function sendWelcomeEmail(toEmail, shopName, temporaryPassword) {
     console.log("   To:", toEmail);
     console.log("   Shop:", shopName);
 
-    // Step 1: Add profile to list — this sets consent to SUBSCRIBED automatically
-    await listsApi.createListRelationships(LIST_ID, {
-      data: [
-        {
-          type: "profile",
-          attributes: {
-            email: toEmail,
-            first_name: shopName,
-            properties: {
-              merchant_name: shopName,
-              temporary_password: temporaryPassword,
+    // Step 1: Subscribe profile to list — sets consent to SUBSCRIBED
+    await profilesApi.subscribeProfiles({
+      data: {
+        type: "profile-subscription-bulk-create-job",
+        attributes: {
+          profiles: {
+            data: [
+              {
+                type: "profile",
+                attributes: {
+                  email: toEmail,
+                  first_name: shopName,
+                  properties: {
+                    merchant_name: shopName,
+                    temporary_password: temporaryPassword,
+                  },
+                  subscriptions: {
+                    email: {
+                      marketing: {
+                        consent: "SUBSCRIBED",
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+        relationships: {
+          list: {
+            data: {
+              type: "list",
+              id: LIST_ID,
             },
           },
         },
-      ],
+      },
     });
 
-    console.log("✅ Profile subscribed to list!");
+    console.log("✅ Profile subscribed successfully!");
 
     // Step 2: Fire App Installed event
     await eventsApi.createEvent({
@@ -70,14 +91,18 @@ async function sendWelcomeEmail(toEmail, shopName, temporaryPassword) {
     return true;
 
   } catch (error) {
-    console.error("❌ Klaviyo error:", error);
-    console.error("   Error message:", error.message);
+    console.error("❌ Klaviyo error:", error.message);
+
+    // Print full error response for debugging
+    if (error.response) {
+      console.error("   Status:", error.response.status);
+      console.error("   Details:", JSON.stringify(error.response.data, null, 2));
+    }
+
     return false;
   }
 }
 
-module.exports = {
-  sendWelcomeEmail,
-};
+module.exports = { sendWelcomeEmail };
 
 console.log("✅ Klaviyo configured");

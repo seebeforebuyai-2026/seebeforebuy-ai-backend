@@ -45,7 +45,6 @@ async function sendWelcomeEmail(toEmail, shopName, temporaryPassword) {
 <head>
   <style>
     body {
-      font-family: Arial, sans-serif;
       line-height: 1.6;
       color: #333;
       max-width: 600px;
