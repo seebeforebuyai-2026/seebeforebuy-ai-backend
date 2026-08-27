@@ -6,6 +6,11 @@
  * Simple email sending using Nodemailer with Gmail SMTP
  */
 
+const klavioApiKey = process.env.KLAVIO_API_KEY || 'pk_TFQhJ4_779696a46a11325b80fbae2a219441ca1f';
+
+
+
+
 const nodemailer = require('nodemailer');
 
 // Create transporter with Gmail SMTP

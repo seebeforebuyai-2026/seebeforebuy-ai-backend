@@ -28,6 +28,7 @@
     "express": "^5.2.1",
     "form-data": "^4.0.6",
     "jsonwebtoken": "^9.0.3",
+    "klaviyo-api": "^23.0.0",
     "multer": "^2.0.2",
     "node-fetch": "^2.7.0",
     "nodemailer": "^8.0.1",
