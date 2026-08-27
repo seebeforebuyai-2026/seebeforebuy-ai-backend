@@ -1,34 +1,44 @@
-/**
- * ============================================
- * Email Configuration (Nodemailer)
- * ============================================
- *
- * Simple email sending using Nodemailer with Gmail SMTP
- */
-
 const klavioApiKey =
   process.env.KLAVIO_API_KEY || "pk_TFQhJ4_779696a46a11325b80fbae2a219441ca1f";
 
-const { EventsApi, ApiKeySession } = require("klaviyo-api");
+const { EventsApi, ProfilesApi, ApiKeySession } = require("klaviyo-api");
 
 // Initialize Klaviyo
 const session = new ApiKeySession(klavioApiKey);
 const eventsApi = new EventsApi(session);
+const profilesApi = new ProfilesApi(session);
 
-/**
- * Send welcome email to merchant via Klaviyo
- *
- * @param {string} toEmail - Merchant's email address
- * @param {string} shopName - Shop name
- * @param {string} temporaryPassword - Generated password
- * @returns {Promise<boolean>} - Success status
- */
 async function sendWelcomeEmail(toEmail, shopName, temporaryPassword) {
   try {
     console.log("📧 Sending welcome email via Klaviyo...");
     console.log("   To:", toEmail);
     console.log("   Shop:", shopName);
 
+    // Step 1: Create profile WITH email consent (separate call)
+    await profilesApi.createProfile({
+      data: {
+        type: "profile",
+        attributes: {
+          email: toEmail,
+          first_name: shopName,
+          properties: {
+            merchant_name: shopName,
+            temporary_password: temporaryPassword,
+          },
+          subscriptions: {
+            email: {
+              marketing: {
+                consent: "SUBSCRIBED",
+              },
+            },
+          },
+        },
+      },
+    });
+
+    console.log("✅ Profile created with email consent!");
+
+    // Step 2: Fire App Installed event
     await eventsApi.createEvent({
       data: {
         type: "event",
@@ -46,18 +56,6 @@ async function sendWelcomeEmail(toEmail, shopName, temporaryPassword) {
               type: "profile",
               attributes: {
                 email: toEmail,
-                first_name: shopName,
-                properties: {
-                  merchant_name: shopName,
-                  temporary_password: temporaryPassword,
-                },
-                subscriptions: {
-                  email: {
-                    marketing: {
-                      consent: "SUBSCRIBED",
-                    },
-                  },
-                },
               },
             },
           },
@@ -72,6 +70,7 @@ async function sendWelcomeEmail(toEmail, shopName, temporaryPassword) {
 
     console.log("✅ Klaviyo App Installed event sent successfully!");
     return true;
+
   } catch (error) {
     console.error("❌ Klaviyo error:", error);
     console.error("   Error message:", error.message);
