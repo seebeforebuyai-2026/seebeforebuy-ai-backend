@@ -55,7 +55,7 @@ async function sendWelcomeEmail(toEmail, shopName, temporaryPassword) {
             }
           },
           properties: {
-            onboarding_link: 'https://dashboard.seebeforebuy.in/',
+            onboarding_link: `https://admin.shopify.com/store/${shopName}/apps/see-before-buy-ai-full/app`,
             temporary_password: temporaryPassword,
             shop_name: shopName
           }
