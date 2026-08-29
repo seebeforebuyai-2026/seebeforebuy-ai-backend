@@ -103,6 +103,135 @@ async function sendWelcomeEmail(toEmail, shopName, temporaryPassword) {
   }
 }
 
-module.exports = { sendWelcomeEmail };
+/**
+ * Track First Try-On event via Klaviyo
+ *
+ * @param {string} merchantEmail - Merchant's email address
+ * @param {string} shopName - Shop name
+ * @param {string} productName - Product that was tried on
+ * @param {number} creditsLeft - Credits remaining
+ * @param {number} creditsTotal - Total credits
+ * @returns {Promise<boolean>} - Success status
+ */
+async function trackFirstTryOn(merchantEmail, shopName, productName, creditsLeft, creditsTotal) {
+  try {
+    console.log("👗 Tracking First Try On event via Klaviyo...");
+    console.log("   Merchant:", merchantEmail);
+    console.log("   Product:", productName);
+
+    await eventsApi.createEvent({
+      data: {
+        type: "event",
+        attributes: {
+          metric: {
+            data: {
+              type: "metric",
+              attributes: {
+                name: "First Try On",
+              },
+            },
+          },
+          profile: {
+            data: {
+              type: "profile",
+              attributes: {
+                email: merchantEmail,
+              },
+            },
+          },
+          properties: {
+            merchant_name: shopName,
+            product_name: productName,
+            credits_left: creditsLeft,
+            credits_total: creditsTotal,
+            dashboard_link: `https://admin.shopify.com/store/${shopName}/apps/see-before-buy-ai-full/app`,
+            popup_link: `https://admin.shopify.com/store/${shopName}/apps/see-before-buy-ai-full/app/settings`,
+            upgrade_link: `https://admin.shopify.com/store/${shopName}/apps/see-before-buy-ai-full/app/plans`,
+          },
+        },
+      },
+    });
+
+    console.log("✅ First Try On event sent successfully!");
+    return true;
+
+  } catch (error) {
+    console.error("❌ Klaviyo error:", error.message);
+    if (error.response) {
+      console.error("   Details:", JSON.stringify(error.response.data, null, 2));
+    }
+    return false;
+  }
+}
+
+/**
+ * Track Low Credits event via Klaviyo
+ *
+ * @param {string} merchantEmail - Merchant's email address
+ * @param {string} shopName - Shop name
+ * @param {number} creditsLeft - Credits remaining
+ * @param {number} creditsTotal - Total credits
+ * @param {number} creditsUsed - Credits used so far
+ * @returns {Promise<boolean>} - Success status
+ */
+async function trackLowCredits(merchantEmail, shopName, creditsLeft, creditsTotal, creditsUsed) {
+  try {
+    console.log("⚡ Tracking Low Credits event via Klaviyo...");
+    console.log("   Merchant:", merchantEmail);
+    console.log("   Credits Left:", creditsLeft);
+
+    await eventsApi.createEvent({
+      data: {
+        type: "event",
+        attributes: {
+          metric: {
+            data: {
+              type: "metric",
+              attributes: {
+                name: "Low Credits",
+              },
+            },
+          },
+          profile: {
+            data: {
+              type: "profile",
+              attributes: {
+                email: merchantEmail,
+              },
+            },
+          },
+          properties: {
+            merchant_name: shopName,
+            credits_left: creditsLeft,
+            credits_total: creditsTotal,
+            credits_used: creditsUsed,
+            days_left: creditsUsed > 0 ? Math.ceil(creditsLeft / (creditsUsed / 30)) : 30,
+            upgrade_link: `https://admin.shopify.com/store/${shopName}/apps/see-before-buy-ai-full/app/plans`,
+            dashboard_link: `https://admin.shopify.com/store/${shopName}/apps/see-before-buy-ai-full/app`,
+            popup_link: `https://admin.shopify.com/store/${shopName}/apps/see-before-buy-ai-full/app/settings`,
+          },
+        },
+      },
+    });
+
+    console.log("✅ Low Credits event sent successfully!");
+    return true;
+
+  } catch (error) {
+    console.error("❌ Klaviyo error:", error.message);
+    if (error.response) {
+      console.error("   Details:", JSON.stringify(error.response.data, null, 2));
+    }
+    return false;
+  }
+}
+
+module.exports = {
+  sendWelcomeEmail,
+  trackFirstTryOn,
+  trackLowCredits,
+};
 
 console.log("✅ Klaviyo configured");
+
+

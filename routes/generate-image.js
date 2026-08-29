@@ -8,6 +8,7 @@ const ShopModel = require("../models/dynamodb-shop");
 const UsageLogModel = require("../models/dynamodb-usage-log");
 const { v4: uuidv4 } = require("uuid");
 const sharp = require("sharp");
+const { trackFirstTryOn, trackLowCredits } = require("../config/email");
 const { selectPromptKey } = require("../services/prompt-selection");
 // NOTE: Using native FormData + Blob (Node 18+), NOT the form-data npm package
 
@@ -96,7 +97,7 @@ router.post("/", upload.single("userImage"), async (req, res) => {
     // ── NEW: if frontend sent a fully-resolved custom_prompt, use it directly ──
     const customPrompt = req.body.custom_prompt || null;
 
-    let resolvedCategory = 'default';
+    let resolvedCategory = "default";
     if (!customPrompt) {
       // Fall back to old selectPromptKey logic only when no custom prompt
       resolvedCategory = selectPromptKey({
@@ -108,7 +109,9 @@ router.post("/", upload.single("userImage"), async (req, res) => {
 
     console.log(`🏷️  Product category: ${productCategory}`);
     if (customPrompt) {
-      console.log(`📝 Using custom_prompt from frontend (${customPrompt.length} chars)`);
+      console.log(
+        `📝 Using custom_prompt from frontend (${customPrompt.length} chars)`,
+      );
     } else {
       console.log(`🧠 Resolved prompt category: ${resolvedCategory}`);
     }
@@ -118,7 +121,7 @@ router.post("/", upload.single("userImage"), async (req, res) => {
       product_name,
       product_image_url,
       resolvedCategory,
-      customPrompt,   // <-- pass through (null if not provided)
+      customPrompt, // <-- pass through (null if not provided)
     );
 
     // Extract image URL + prompt tracking info
@@ -127,8 +130,32 @@ router.post("/", upload.single("userImage"), async (req, res) => {
     const promptPreview = aiResult.promptPreview || null;
     const aiModel = aiResult.aiModel || "gpt-image-2";
 
+    if (shop.images_used === 2) {
+      await trackFirstTryOn(
+        shop.shop_email,
+        shop.shop_name || shop.shop_domain,
+        product_name,
+        shop.images_limit - 1,
+        shop.images_limit,
+      );
+    }
+
     // Increment usage
     await ShopModel.incrementUsage(shop_domain);
+
+    const previousCreditsLeft = shop.images_limit - shop.images_used;
+    const creditsUsed = shop.images_used + 1;
+    const creditsLeft = shop.images_limit - creditsUsed;
+
+    if (previousCreditsLeft > 10 && creditsLeft <= 10) {
+      await trackLowCredits(
+        shop.shop_email,
+        shop.shop_name || shop.shop_domain,
+        creditsLeft,
+        shop.images_limit,
+        creditsUsed,
+      );
+    }
 
     const generationTime = Date.now() - startTime;
 
@@ -655,7 +682,7 @@ async function generateImageWithOpenAI(
   productName,
   productImageUrl,
   productCategory = "apparel",
-  customPrompt = null,       // NEW — full prompt text from frontend prompts.js
+  customPrompt = null, // NEW — full prompt text from frontend prompts.js
 ) {
   try {
     console.log("🎨 Starting OpenAI gpt-image-2 virtual try-on...");
@@ -671,12 +698,16 @@ async function generateImageWithOpenAI(
     let promptText;
     if (customPrompt && customPrompt.trim().length > 0) {
       promptText = customPrompt.trim();
-      console.log(`📝 Using custom_prompt from frontend (${promptText.length} chars)`);
+      console.log(
+        `📝 Using custom_prompt from frontend (${promptText.length} chars)`,
+      );
     } else {
       const promptFunction =
         CATEGORY_PROMPTS[productCategory] || CATEGORY_PROMPTS.default;
       promptText = promptFunction(productName);
-      console.log(`📝 Using CATEGORY_PROMPTS[${productCategory}] (${promptText.length} chars)`);
+      console.log(
+        `📝 Using CATEGORY_PROMPTS[${productCategory}] (${promptText.length} chars)`,
+      );
     }
 
     // ── DETAILED REQUEST LOG — visible in PM2 logs for every request ──────
@@ -698,8 +729,8 @@ async function generateImageWithOpenAI(
       console.log("📥 Step 2: Downloading product image...");
       try {
         // Normalize protocol-relative URLs (//example.com/...) to https://
-        const normalizedUrl = productImageUrl.startsWith('//')
-          ? 'https:' + productImageUrl
+        const normalizedUrl = productImageUrl.startsWith("//")
+          ? "https:" + productImageUrl
           : productImageUrl;
         const productResponse = await fetch(normalizedUrl);
         if (!productResponse.ok)
