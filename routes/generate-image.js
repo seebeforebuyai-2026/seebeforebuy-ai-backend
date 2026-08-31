@@ -8,7 +8,11 @@ const ShopModel = require("../models/dynamodb-shop");
 const UsageLogModel = require("../models/dynamodb-usage-log");
 const { v4: uuidv4 } = require("uuid");
 const sharp = require("sharp");
-const { trackFirstTryOn, trackLowCredits } = require("../config/email");
+const {
+  trackFirstTryOn,
+  trackLowCredits,
+  trackCreditsExhausted,
+} = require("../config/email");
 const { selectPromptKey } = require("../services/prompt-selection");
 // NOTE: Using native FormData + Blob (Node 18+), NOT the form-data npm package
 
@@ -154,6 +158,15 @@ router.post("/", upload.single("userImage"), async (req, res) => {
         creditsLeft,
         shop.images_limit,
         creditsUsed,
+      );
+    }
+
+    if (creditsLeft === 0) {
+      await trackCreditsExhausted(
+        shop.shop_email,
+        shop.shop_name || shop.shop_domain,
+        shop.images_limit,
+        shop.images_used + 1,
       );
     }
 

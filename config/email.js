@@ -226,11 +226,79 @@ async function trackLowCredits(merchantEmail, shopName, creditsLeft, creditsTota
   }
 }
 
+
+
+/**
+ * Track Credits Exhausted event via Klaviyo
+ *
+ * @param {string} merchantEmail - Merchant's email address
+ * @param {string} shopName - Shop name
+ * @param {number} creditsTotal - Total credits
+ * @param {number} monthlyTryon - Total try-ons this month
+ * @returns {Promise<boolean>} - Success status
+ */
+async function trackCreditsExhausted(merchantEmail, shopName, creditsTotal, monthlyTryon) {
+  try {
+    console.log("🔴 Tracking Credits Exhausted event via Klaviyo...");
+    console.log("   Merchant:", merchantEmail);
+
+    const dailyTryon = Math.round(monthlyTryon / 30);
+    const dailyLoss = Math.round(dailyTryon * 0.3 * 700); // 30% conversion × ₹700 AOV
+
+    await eventsApi.createEvent({
+      data: {
+        type: "event",
+        attributes: {
+          metric: {
+            data: {
+              type: "metric",
+              attributes: {
+                name: "Credits Exhausted",
+              },
+            },
+          },
+          profile: {
+            data: {
+              type: "profile",
+              attributes: {
+                email: merchantEmail,
+              },
+            },
+          },
+          properties: {
+            merchant_name: shopName,
+            credits_left: 0,
+            credits_total: creditsTotal,
+            monthly_tryon: monthlyTryon,
+            daily_tryon: dailyTryon,
+            daily_loss: dailyLoss,
+            upgrade_link: "https://dashboard.seebeforebuy.in/upgrade",
+            dashboard_link: "https://dashboard.seebeforebuy.in/",
+            popup_link: "https://dashboard.seebeforebuy.in/settings",
+          },
+        },
+      },
+    });
+
+    console.log("✅ Credits Exhausted event sent successfully!");
+    return true;
+
+  } catch (error) {
+    console.error("❌ Klaviyo error:", error.message);
+    if (error.response) {
+      console.error("   Details:", JSON.stringify(error.response.data, null, 2));
+    }
+    return false;
+  }
+}
+
 module.exports = {
   sendWelcomeEmail,
   trackFirstTryOn,
   trackLowCredits,
+  trackCreditsExhausted, // 👈 yeh add karo
 };
+
 
 console.log("✅ Klaviyo configured");
 

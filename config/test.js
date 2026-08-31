@@ -5,9 +5,9 @@ const klavioApiKey = process.env.KLAVIO_API_KEY || "pk_TFQhJ4_779696a46a11325b80
 const session = new ApiKeySession(klavioApiKey);
 const eventsApi = new EventsApi(session);
 
-async function testLowCreditsEvent() {
+async function testCreditsExhaustedEvent() {
   try {
-    console.log("🚀 Firing Low Credits test event...");
+    console.log("🚀 Firing Credits Exhausted test event...");
 
     await eventsApi.createEvent({
       data: {
@@ -17,7 +17,7 @@ async function testLowCreditsEvent() {
             data: {
               type: "metric",
               attributes: {
-                name: "Low Credits",
+                name: "Credits Exhausted",
               },
             },
           },
@@ -31,16 +31,20 @@ async function testLowCreditsEvent() {
           },
           properties: {
             merchant_name: "Test Store",
-            credits_left: 8,
+            credits_left: 0,
             credits_total: 50,
+            monthly_tryon: 50,
+            daily_tryon: 2,
+            daily_loss: 420,
             upgrade_link: "https://dashboard.seebeforebuy.in/upgrade",
             dashboard_link: "https://dashboard.seebeforebuy.in/",
+            popup_link: "https://dashboard.seebeforebuy.in/settings",
           },
         },
       },
     });
 
-    console.log("✅ Low Credits event fired successfully!");
+    console.log("✅ Credits Exhausted event fired successfully!");
 
   } catch (error) {
     console.error("❌ Error:", error.message);
@@ -50,4 +54,4 @@ async function testLowCreditsEvent() {
   }
 }
 
-testLowCreditsEvent();
+testCreditsExhaustedEvent();
